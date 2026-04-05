@@ -6,6 +6,9 @@
 - 你远程协助对方安装
 - 对方愿意自己复制一条 PowerShell 命令执行
 
+开发者：创造晴天
+微信：kerp531
+
 ## 前提条件
 
 - Windows 10/11
@@ -15,6 +18,14 @@
   - `https://nodejs.org`
   - `https://registry.npmjs.org`
   - `https://github.com`
+
+## 脚本会自动做什么
+
+- 显示开发者信息
+- 检查 Git 是否存在
+- 缺少 Git 时优先通过 `winget` 安装 Git for Windows
+- `winget` 不可用或失败时，自动下载 Git for Windows 并静默安装
+- 然后再调用 OpenClaw 官方安装器继续安装
 
 ## 方法 1：本地直接运行仓库脚本
 
