@@ -387,8 +387,16 @@ function Invoke-ProcessWithMonitor {
             throw "官方安装器退出码: $($proc.ExitCode)"
         }
     } finally {
-        Remove-Item $stdoutFile -Force -ErrorAction SilentlyContinue
-        Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+        try {
+            if (-not [string]::IsNullOrWhiteSpace($stdoutFile) -and (Test-Path -LiteralPath $stdoutFile)) {
+                Remove-Item -LiteralPath $stdoutFile -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+        try {
+            if (-not [string]::IsNullOrWhiteSpace($stderrFile) -and (Test-Path -LiteralPath $stderrFile)) {
+                Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
     }
 }
 
@@ -569,8 +577,8 @@ function Install-OpenClawViaNpm {
         return
     }
 
-    $npmCommand = '"{0}" install -g "{1}" --loglevel {2} --fund=false --audit=false' -f $npmPath, $packageSpec, $Script:NpmInstallLogLevel
-    Invoke-ProcessWithMonitor -FilePath "cmd.exe" -Arguments @("/d", "/c", $npmCommand) -InstallDetectionText "npm"
+    $commandText = "& '{0}' install -g '{1}' --loglevel {2} --fund=false --audit=false" -f $npmPath, $packageSpec, $Script:NpmInstallLogLevel
+    Invoke-ProcessWithMonitor -FilePath "powershell.exe" -Arguments @("-NoProfile", "-Command", $commandText) -InstallDetectionText "npm"
 
     if (-not (Ensure-OpenClawOnPath)) {
         Write-Host "安装已完成，但当前终端还找不到 openclaw 命令。" -ForegroundColor Yellow
