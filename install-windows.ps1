@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $Script:ReleaseVersion = "1.0.0"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
+$Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
 
 function Show-Banner {
     Write-Host ""
@@ -33,8 +34,8 @@ function Show-Usage {
         "微信：kerp531",
         "",
         "用途:",
-        "  这个脚本转调 OpenClaw 官方 PowerShell 安装器，",
-        "  适合双击本地运行、远程协助时让对方执行，或作为 GitHub Raw 安装入口。",
+        "  Windows 的 npm 安装模式会直接执行官方文档推荐命令，",
+        "  并在需要时调用官方 PowerShell 安装器处理 git 源码安装模式。",
         "",
         "用法:",
         "  powershell -ExecutionPolicy Bypass -File .\install-windows.ps1 [参数]",
@@ -219,9 +220,11 @@ function Write-DiagnosticHint {
     Write-Host ""
 }
 
-function Invoke-OfficialInstallerWithMonitor {
+function Invoke-ProcessWithMonitor {
     param(
-        [string[]]$Arguments
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$InstallDetectionText = "Installing OpenClaw"
     )
 
     $stdoutFile = Join-Path $env:TEMP ("openclaw-official-stdout-" + [guid]::NewGuid().ToString("N") + ".log")
@@ -233,7 +236,7 @@ function Invoke-OfficialInstallerWithMonitor {
     $stderrLineCount = 0
 
     try {
-        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $Arguments -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -PassThru
+        $proc = Start-Process -FilePath $FilePath -ArgumentList $Arguments -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -PassThru
 
         while (-not $proc.HasExited) {
             Start-Sleep -Seconds 3
@@ -244,7 +247,7 @@ function Invoke-OfficialInstallerWithMonitor {
                     $newStdout = $stdoutLines[$stdoutLineCount..($stdoutLines.Count - 1)]
                     foreach ($line in $newStdout) {
                         Write-Host $line
-                        if ($line -like "*Installing OpenClaw*") {
+                        if ($line -like "*$InstallDetectionText*") {
                             $sawInstallLine = $true
                         }
                     }
@@ -305,6 +308,133 @@ function Invoke-OfficialInstallerWithMonitor {
     }
 }
 
+function Get-NpmCommandPath {
+    $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npmCmd -and $npmCmd.Source) {
+        return $npmCmd.Source
+    }
+
+    $npmExe = Get-Command npm.exe -ErrorAction SilentlyContinue
+    if ($npmExe -and $npmExe.Source) {
+        return $npmExe.Source
+    }
+
+    $npmPlain = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmPlain -and $npmPlain.Source) {
+        return $npmPlain.Source
+    }
+
+    throw "npm 未找到。请确认 Node.js 已正确安装。"
+}
+
+function Test-OpenClawAvailable {
+    try {
+        $null = Get-Command openclaw -ErrorAction Stop
+        return $true
+    } catch {
+        try {
+            $null = Get-Command openclaw.cmd -ErrorAction Stop
+            return $true
+        } catch {
+            return $false
+        }
+    }
+}
+
+function Ensure-OpenClawOnPath {
+    Refresh-ProcessPath
+    if (Test-OpenClawAvailable) {
+        return $true
+    }
+
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $npmPrefix = (& (Get-NpmCommandPath) config get prefix).Trim()
+    $candidates = @()
+
+    if (-not [string]::IsNullOrWhiteSpace($npmPrefix)) {
+        $candidates += $npmPrefix
+        $candidates += (Join-Path $npmPrefix "bin")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
+        $candidates += (Join-Path $env:APPDATA "npm")
+    }
+
+    $candidates = $candidates | Select-Object -Unique
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path (Join-Path $candidate "openclaw.cmd"))) {
+            continue
+        }
+        if (-not ($userPath -split ";" | Where-Object { $_ -ieq $candidate })) {
+            [Environment]::SetEnvironmentVariable("Path", "$userPath;$candidate", "User")
+            Refresh-ProcessPath
+            Write-Host "已将 OpenClaw 所在目录加入用户 PATH：$candidate" -ForegroundColor Yellow
+        }
+        return $true
+    }
+
+    return $false
+}
+
+function Install-OpenClawViaNpm {
+    $packageSpec = "openclaw@$Tag"
+    $npmPath = Get-NpmCommandPath
+
+    Write-Host "正在执行官方推荐安装命令：npm install -g $packageSpec" -ForegroundColor Cyan
+    if ($VerboseInstall) {
+        Write-Host "已启用详细日志，npm 将使用 --loglevel verbose。" -ForegroundColor Cyan
+    }
+
+    if ($DryRun) {
+        Write-Host "[DryRun] npm install -g $packageSpec --loglevel $($Script:NpmInstallLogLevel)" -ForegroundColor Yellow
+        return
+    }
+
+    $npmArgs = @(
+        "install"
+        "-g"
+        $packageSpec
+        "--loglevel"
+        $Script:NpmInstallLogLevel
+        "--fund=false"
+        "--audit=false"
+    )
+
+    Invoke-ProcessWithMonitor -FilePath $npmPath -Arguments $npmArgs -InstallDetectionText "npm"
+
+    if (-not (Ensure-OpenClawOnPath)) {
+        Write-Host "安装已完成，但当前终端还找不到 openclaw 命令。" -ForegroundColor Yellow
+        Write-Host "请重新打开 PowerShell 后执行：openclaw --version" -ForegroundColor Yellow
+        return
+    }
+
+    try {
+        $version = (& openclaw --version).Trim()
+        if ($version) {
+            Write-Host "OpenClaw 安装成功：$version" -ForegroundColor Green
+        } else {
+            Write-Host "OpenClaw 安装成功。" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "OpenClaw 已安装，但暂时无法读取版本号，请重新打开终端后执行 openclaw --version。" -ForegroundColor Yellow
+    }
+
+    if (-not $NoOnboard) {
+        Write-Host "开始执行 onboarding..." -ForegroundColor Cyan
+        & openclaw onboard --install-daemon
+    } else {
+        Write-Host "已按要求跳过 onboarding，稍后可手动执行：openclaw onboard --install-daemon" -ForegroundColor Yellow
+    }
+}
+
+function Invoke-GitInstallViaOfficialInstaller {
+    param(
+        [string[]]$Arguments
+    )
+
+    Write-Host "git 模式仍交给 OpenClaw 官方安装器处理..." -ForegroundColor Cyan
+    Invoke-ProcessWithMonitor -FilePath "powershell.exe" -Arguments $Arguments -InstallDetectionText "Installing OpenClaw"
+}
+
 if ($Help) {
     Show-Banner
     Show-Usage
@@ -353,7 +483,14 @@ $processArgs = @(
 ) + $invokeArgs
 
 if ($VerboseInstall) {
-    Write-Host "已启用增强诊断模式：如果官方安装器长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
+    Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
 }
 
-Invoke-OfficialInstallerWithMonitor -Arguments $processArgs
+if ($InstallMethod -eq "git") {
+    Write-Host "已切换到官方安装路径：$($OfficialInstallUrl)" -ForegroundColor Green
+    Write-Host ("即将执行：powershell -File {0} {1}" -f $tempFile, ($invokeArgs -join " ")) -ForegroundColor Yellow
+    Write-Host ""
+    Invoke-GitInstallViaOfficialInstaller -Arguments $processArgs
+} else {
+    Install-OpenClawViaNpm
+}

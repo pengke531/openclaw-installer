@@ -26,7 +26,8 @@
 - 检查 Git 是否存在
 - 缺少 Git 时优先通过 `winget` 安装 Git for Windows
 - `winget` 不可用或失败时，自动下载 Git for Windows 并静默安装
-- 然后再调用 OpenClaw 官方安装器继续安装
+- 默认 `npm` 模式下直接执行官方推荐命令 `npm install -g openclaw@latest`
+- `git` 模式下继续调用 OpenClaw 官方安装器
 
 ## 方法 1：本地直接运行仓库脚本
 
