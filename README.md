@@ -16,6 +16,7 @@
 - 从源码 `git` 安装或默认 `npm` 安装
 - Windows 缺少 Git 时自动补装 Git for Windows
 - Windows 实际安装时自动请求管理员权限
+- Windows 会先检查 Node.js、npm、npm 全局前缀和 PATH，再安装 OpenClaw
 
 ## 当前不支持
 
@@ -29,6 +30,7 @@
 
 - Windows：已针对“用户名/路径异常导致 Git 自举失败”做补强
 - Windows 默认 `npm` 模式会直接执行官方推荐命令 `npm install -g openclaw@latest`
+- Windows 会优先把 npm 全局安装目录调整到用户目录，降低权限问题和空白窗口问题
 - Linux / macOS / WSL：未发现与本次 Windows 问题同类的 Git 自举缺陷
 - 仍然依赖官方安装器的网络可用性和上游行为
 

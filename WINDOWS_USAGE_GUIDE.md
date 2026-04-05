@@ -23,6 +23,10 @@
 
 - 显示开发者信息
 - 非 DryRun 模式下，缺少管理员权限时自动请求 UAC 提权
+- 检查 Node.js 22+ 是否存在，缺失时自动安装 Node.js LTS
+- 检查 npm 是否可用
+- 检查并修正 npm 全局前缀到用户目录
+- 检查并修正 npm/OpenClaw 所在目录到用户 PATH
 - 检查 Git 是否存在
 - 缺少 Git 时优先通过 `winget` 安装 Git for Windows
 - `winget` 不可用或失败时，自动下载 Git for Windows 并静默安装

@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.0.0"
+$Script:ReleaseVersion = "1.0.1"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
 
@@ -123,6 +123,90 @@ function Refresh-ProcessPath {
     $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
     $env:Path = "$machinePath;$userPath"
+}
+
+function Test-NodeAvailable {
+    try {
+        $nodeVersion = node --version
+        $major = [int](($nodeVersion -replace '^v', '').Split('.')[0])
+        return [PSCustomObject]@{
+            Available = ($major -ge 22)
+            Version = $nodeVersion
+            Major = $major
+        }
+    } catch {
+        return [PSCustomObject]@{
+            Available = $false
+            Version = $null
+            Major = 0
+        }
+    }
+}
+
+function Install-NodeWithWinget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    Write-Host "未检测到可用的 Node.js，正在通过 winget 安装 Node.js LTS..." -ForegroundColor Yellow
+    & winget install OpenJS.NodeJS.LTS --source winget --accept-package-agreements --accept-source-agreements
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        Write-Host "winget 安装 Node.js 失败，退出码: $exitCode" -ForegroundColor Yellow
+        return $false
+    }
+
+    Refresh-ProcessPath
+    return (Test-NodeAvailable).Available
+}
+
+function Install-NodeWithDirectDownload {
+    $nodeUrl = "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi"
+    $nodeInstaller = Join-Path $env:TEMP "openclaw-node-installer.msi"
+
+    Write-Host "正在下载 Node.js 安装程序..." -ForegroundColor Yellow
+    Invoke-WebRequest -UseBasicParsing -Uri $nodeUrl -OutFile $nodeInstaller
+
+    Write-Host "正在静默安装 Node.js..." -ForegroundColor Yellow
+    & msiexec.exe /i $nodeInstaller /qn /norestart
+    $exitCode = $LASTEXITCODE
+
+    Refresh-ProcessPath
+    Remove-Item $nodeInstaller -Force -ErrorAction SilentlyContinue
+
+    if ($exitCode -ne 0) {
+        Write-Host "Node.js 静默安装失败，退出码: $exitCode" -ForegroundColor Yellow
+        return $false
+    }
+
+    return (Test-NodeAvailable).Available
+}
+
+function Ensure-NodeReady {
+    $node = Test-NodeAvailable
+    if ($node.Available) {
+        Write-Host "Node.js 已就绪：$($node.Version)" -ForegroundColor Green
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "DryRun：当前未检测到 Node.js 22+，真实安装时会先自动安装 Node.js LTS。" -ForegroundColor Yellow
+        return
+    }
+
+    if (Install-NodeWithWinget) {
+        $node = Test-NodeAvailable
+        Write-Host "Node.js 安装成功：$($node.Version)" -ForegroundColor Green
+        return
+    }
+
+    if (Install-NodeWithDirectDownload) {
+        $node = Test-NodeAvailable
+        Write-Host "Node.js 安装成功：$($node.Version)" -ForegroundColor Green
+        return
+    }
+
+    throw "无法自动安装 Node.js 22+。请先手动安装：https://nodejs.org/en/download/"
 }
 
 function Test-GitAvailable {
@@ -236,7 +320,7 @@ function Invoke-ProcessWithMonitor {
     $stderrLineCount = 0
 
     try {
-        $proc = Start-Process -FilePath $FilePath -ArgumentList $Arguments -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -PassThru
+        $proc = Start-Process -FilePath $FilePath -ArgumentList $Arguments -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -PassThru -WindowStyle Hidden
 
         while (-not $proc.HasExited) {
             Start-Sleep -Seconds 3
@@ -327,6 +411,97 @@ function Get-NpmCommandPath {
     throw "npm 未找到。请确认 Node.js 已正确安装。"
 }
 
+function Test-NpmAvailable {
+    try {
+        $npmPath = Get-NpmCommandPath
+        $npmVersion = & $npmPath --version
+        return [PSCustomObject]@{
+            Available = $true
+            Path = $npmPath
+            Version = $npmVersion
+        }
+    } catch {
+        return [PSCustomObject]@{
+            Available = $false
+            Path = $null
+            Version = $null
+        }
+    }
+}
+
+function Ensure-NpmReady {
+    $npm = Test-NpmAvailable
+    if ($npm.Available) {
+        Write-Host "npm 已就绪：$($npm.Version)" -ForegroundColor Green
+        return
+    }
+
+    throw "npm 不可用。请确认 Node.js 安装完整，或重新打开 PowerShell 后重试。"
+}
+
+function Test-DirectoryWritable {
+    param([string]$PathToCheck)
+
+    try {
+        if (-not (Test-Path $PathToCheck)) {
+            New-Item -ItemType Directory -Force -Path $PathToCheck | Out-Null
+        }
+        $probe = Join-Path $PathToCheck ("write-test-" + [guid]::NewGuid().ToString("N") + ".tmp")
+        Set-Content -Path $probe -Value "ok" -Encoding ASCII
+        Remove-Item $probe -Force -ErrorAction SilentlyContinue
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Ensure-NpmPrefixReady {
+    $preferredPrefix = if ($env:APPDATA) { Join-Path $env:APPDATA "npm" } else { Join-Path $env:USERPROFILE "AppData\\Roaming\\npm" }
+    $npmPath = Get-NpmCommandPath
+    $currentPrefix = (& $npmPath config get prefix).Trim()
+    $needsUserPrefix = $false
+
+    if ([string]::IsNullOrWhiteSpace($currentPrefix)) {
+        $needsUserPrefix = $true
+    } elseif ($currentPrefix -match 'Program Files' -or $currentPrefix -match 'WindowsApps') {
+        $needsUserPrefix = $true
+    } elseif (-not (Test-DirectoryWritable -PathToCheck $currentPrefix)) {
+        $needsUserPrefix = $true
+    }
+
+    if ($needsUserPrefix) {
+        if ($DryRun) {
+            Write-Host "DryRun：npm 全局前缀将切换为用户目录：$preferredPrefix" -ForegroundColor Yellow
+        } else {
+            Write-Host "正在将 npm 全局前缀调整到用户目录：$preferredPrefix" -ForegroundColor Yellow
+            if (-not (Test-Path $preferredPrefix)) {
+                New-Item -ItemType Directory -Force -Path $preferredPrefix | Out-Null
+            }
+            & $npmPath config set prefix $preferredPrefix --location=user | Out-Null
+            Refresh-ProcessPath
+            $currentPrefix = (& $npmPath config get prefix).Trim()
+        }
+    }
+
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not [string]::IsNullOrWhiteSpace($currentPrefix)) {
+        if (-not ($userPath -split ";" | Where-Object { $_ -ieq $currentPrefix })) {
+            if ($DryRun) {
+                Write-Host "DryRun：会把 npm 全局目录加入用户 PATH：$currentPrefix" -ForegroundColor Yellow
+            } else {
+                [Environment]::SetEnvironmentVariable("Path", "$userPath;$currentPrefix", "User")
+                Refresh-ProcessPath
+                Write-Host "已将 npm 全局目录加入用户 PATH：$currentPrefix" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    if (-not $DryRun) {
+        $finalPrefix = (& $npmPath config get prefix).Trim()
+        Write-Host "npm 全局前缀：$finalPrefix" -ForegroundColor Green
+    }
+}
+
 function Test-OpenClawAvailable {
     try {
         $null = Get-Command openclaw -ErrorAction Stop
@@ -377,6 +552,11 @@ function Ensure-OpenClawOnPath {
 
 function Install-OpenClawViaNpm {
     $packageSpec = "openclaw@$Tag"
+
+    Ensure-NodeReady
+    Ensure-NpmReady
+    Ensure-NpmPrefixReady
+
     $npmPath = Get-NpmCommandPath
 
     Write-Host "正在执行官方推荐安装命令：npm install -g $packageSpec" -ForegroundColor Cyan
@@ -389,17 +569,8 @@ function Install-OpenClawViaNpm {
         return
     }
 
-    $npmArgs = @(
-        "install"
-        "-g"
-        $packageSpec
-        "--loglevel"
-        $Script:NpmInstallLogLevel
-        "--fund=false"
-        "--audit=false"
-    )
-
-    Invoke-ProcessWithMonitor -FilePath $npmPath -Arguments $npmArgs -InstallDetectionText "npm"
+    $npmCommand = '"{0}" install -g "{1}" --loglevel {2} --fund=false --audit=false' -f $npmPath, $packageSpec, $Script:NpmInstallLogLevel
+    Invoke-ProcessWithMonitor -FilePath "cmd.exe" -Arguments @("/d", "/c", $npmCommand) -InstallDetectionText "npm"
 
     if (-not (Ensure-OpenClawOnPath)) {
         Write-Host "安装已完成，但当前终端还找不到 openclaw 命令。" -ForegroundColor Yellow
@@ -445,11 +616,6 @@ Show-Banner
 Ensure-ElevatedIfNeeded
 Ensure-GitReady
 
-$tempFile = Join-Path $env:TEMP "openclaw-official-install.ps1"
-
-Write-Host "正在下载 OpenClaw 官方 Windows 安装器..." -ForegroundColor Cyan
-Invoke-WebRequest -UseBasicParsing -Uri $OfficialInstallUrl -OutFile $tempFile
-
 $invokeArgs = @()
 if ($PSBoundParameters.ContainsKey("InstallMethod")) {
     $invokeArgs += "-InstallMethod"
@@ -470,10 +636,6 @@ if ($DryRun) {
     $invokeArgs += "-DryRun"
 }
 
-Write-Host "已切换到官方安装路径：$($OfficialInstallUrl)" -ForegroundColor Green
-Write-Host ("即将执行：powershell -File {0} {1}" -f $tempFile, ($invokeArgs -join " ")) -ForegroundColor Yellow
-Write-Host ""
-
 $processArgs = @(
     "-NoProfile"
     "-ExecutionPolicy"
@@ -482,15 +644,20 @@ $processArgs = @(
     $tempFile
 ) + $invokeArgs
 
-if ($VerboseInstall) {
-    Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
-}
-
 if ($InstallMethod -eq "git") {
+    $tempFile = Join-Path $env:TEMP "openclaw-official-install.ps1"
+    Write-Host "正在下载 OpenClaw 官方 Windows 安装器..." -ForegroundColor Cyan
+    Invoke-WebRequest -UseBasicParsing -Uri $OfficialInstallUrl -OutFile $tempFile
     Write-Host "已切换到官方安装路径：$($OfficialInstallUrl)" -ForegroundColor Green
     Write-Host ("即将执行：powershell -File {0} {1}" -f $tempFile, ($invokeArgs -join " ")) -ForegroundColor Yellow
     Write-Host ""
+    if ($VerboseInstall) {
+        Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
+    }
     Invoke-GitInstallViaOfficialInstaller -Arguments $processArgs
 } else {
+    if ($VerboseInstall) {
+        Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
+    }
     Install-OpenClawViaNpm
 }
