@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  bash-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: |
+          bash -n install
+          bash -n install.sh
+
+      - name: Run local tests
+        run: |
+          chmod +x test/test_all.sh
+          bash test/test_all.sh

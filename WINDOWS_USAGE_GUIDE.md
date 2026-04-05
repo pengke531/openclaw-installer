@@ -1,0 +1,86 @@
+# OpenClaw Windows 使用说明
+
+## 适合谁
+
+- 你本人在目标电脑前操作
+- 你远程协助对方安装
+- 对方愿意自己复制一条 PowerShell 命令执行
+
+## 前提条件
+
+- Windows 10/11
+- PowerShell 5+
+- 机器可以联网访问：
+  - `https://openclaw.ai`
+  - `https://nodejs.org`
+  - `https://registry.npmjs.org`
+  - `https://github.com`
+
+## 方法 1：本地直接运行仓库脚本
+
+```powershell
+cd D:\claude\openclaw-installer-lite
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
+## 方法 2：只拷一个脚本到对方电脑
+
+把 [`install-windows.ps1`](/D:/claude/openclaw-installer-lite/install-windows.ps1) 发给对方，对方执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+```
+
+## 方法 3：远程在线安装
+
+适合你不想传文件，只想让对方复制命令：
+
+```powershell
+& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1)))
+```
+
+## 常用变体
+
+跳过 onboarding：
+
+```powershell
+.\install-windows.ps1 -NoOnboard
+```
+
+仅演练，不真正安装：
+
+```powershell
+.\install-windows.ps1 -DryRun -NoOnboard
+```
+
+开发者源码模式：
+
+```powershell
+.\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
+```
+
+## 安装完成后建议执行
+
+```powershell
+openclaw --version
+openclaw doctor
+openclaw gateway status
+```
+
+如果安装时跳过了 onboarding，再执行：
+
+```powershell
+openclaw onboard --install-daemon
+```
+
+## 常见判断
+
+- 是否需要拷文件到对方电脑？
+  - 不需要，如果对方直接在线执行官方或你仓库里的 Raw 命令。
+  - 需要，如果你选择发一个本地脚本给对方离线保存后再运行。
+
+- 是否要拷整个项目？
+  - 不要。Windows 场景下通常只需要一个 `install-windows.ps1`。
+
+- 是否支持完全离线？
+  - 目前不支持。这个稳定版要求联网。

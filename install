@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
+
+if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --proto '=https' --tlsv1.2 "$OFFICIAL_INSTALL_URL" | bash -s -- "$@"
+elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "$OFFICIAL_INSTALL_URL" | bash -s -- "$@"
+else
+    echo "错误：需要 curl 或 wget。"
+    exit 1
+fi
