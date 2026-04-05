@@ -1,6 +1,6 @@
-# OpenClaw Installer Lite
+# OpenClaw Installer v1.0.0
 
-一个面向“帮别人安装 OpenClaw”的轻量包装项目。
+一个面向“帮别人安装 OpenClaw”的正式可交付包装项目。
 
 这个仓库现在只做一件事：把安装入口收敛成稳定、可转发、可本地执行的脚本，底层统一调用 OpenClaw 官方安装器，而不是自己维护一套容易漂移的安装逻辑。
 
@@ -15,6 +15,7 @@
 - 远程在线执行
 - 从源码 `git` 安装或默认 `npm` 安装
 - Windows 缺少 Git 时自动补装 Git for Windows
+- Windows 实际安装时自动请求管理员权限
 
 ## 当前不支持
 
@@ -23,6 +24,12 @@
 - 不联网完成安装
 
 如果目标机器无法访问 `openclaw.ai`、`nodejs.org`、npm registry 或 GitHub，这个项目不适合直接使用。
+
+## 当前版本结论
+
+- Windows：已针对“用户名/路径异常导致 Git 自举失败”做补强
+- Linux / macOS / WSL：未发现与本次 Windows 问题同类的 Git 自举缺陷
+- 仍然依赖官方安装器的网络可用性和上游行为
 
 ## 推荐用法
 

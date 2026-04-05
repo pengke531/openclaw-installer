@@ -11,12 +11,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+$Script:ReleaseVersion = "1.0.0"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 
 function Show-Banner {
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "  OpenClaw 一键安装工具 for Windows" -ForegroundColor Cyan
+    Write-Host "  OpenClaw 一键安装工具 for Windows v$($Script:ReleaseVersion)" -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host "  开发者：创造晴天" -ForegroundColor Yellow
     Write-Host "  微信：kerp531" -ForegroundColor Yellow
@@ -25,7 +26,7 @@ function Show-Banner {
 
 function Show-Usage {
     $lines = @(
-        "OpenClaw Windows 安装包装脚本",
+        "OpenClaw Windows 安装包装脚本 v$($Script:ReleaseVersion)",
         "",
         "开发者：创造晴天",
         "微信：kerp531",
@@ -52,6 +53,63 @@ function Show-Usage {
         "  .\install-windows.ps1 -DryRun -NoOnboard"
     )
     $lines -join [Environment]::NewLine
+}
+
+function Test-IsAdministrator {
+    try {
+        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = [Security.Principal.WindowsPrincipal]::new($currentIdentity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+        return $false
+    }
+}
+
+function Get-RelaunchArguments {
+    $argsList = New-Object System.Collections.Generic.List[string]
+    $argsList.Add("-ExecutionPolicy")
+    $argsList.Add("Bypass")
+    $argsList.Add("-File")
+    $argsList.Add($PSCommandPath)
+
+    if ($PSBoundParameters.ContainsKey("InstallMethod")) {
+        $argsList.Add("-InstallMethod")
+        $argsList.Add($InstallMethod)
+    }
+    if ($PSBoundParameters.ContainsKey("Tag")) {
+        $argsList.Add("-Tag")
+        $argsList.Add($Tag)
+    }
+    if ($PSBoundParameters.ContainsKey("GitDir")) {
+        $argsList.Add("-GitDir")
+        $argsList.Add($GitDir)
+    }
+    if ($NoOnboard) {
+        $argsList.Add("-NoOnboard")
+    }
+    if ($DryRun) {
+        $argsList.Add("-DryRun")
+    }
+    if ($Help) {
+        $argsList.Add("-Help")
+    }
+
+    return $argsList.ToArray()
+}
+
+function Ensure-ElevatedIfNeeded {
+    if ($Help -or $DryRun) {
+        return
+    }
+
+    if (Test-IsAdministrator) {
+        return
+    }
+
+    Write-Host "当前不是管理员权限，正在请求提升..." -ForegroundColor Yellow
+    $relaunchArgs = Get-RelaunchArguments
+    $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $relaunchArgs -Wait -PassThru
+    exit $proc.ExitCode
 }
 
 function Refresh-ProcessPath {
@@ -149,6 +207,7 @@ if ($Help) {
 }
 
 Show-Banner
+Ensure-ElevatedIfNeeded
 Ensure-GitReady
 
 $tempFile = Join-Path $env:TEMP "openclaw-official-install.ps1"

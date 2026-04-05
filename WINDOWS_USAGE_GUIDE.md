@@ -22,6 +22,7 @@
 ## 脚本会自动做什么
 
 - 显示开发者信息
+- 非 DryRun 模式下，缺少管理员权限时自动请求 UAC 提权
 - 检查 Git 是否存在
 - 缺少 Git 时优先通过 `winget` 安装 Git for Windows
 - `winget` 不可用或失败时，自动下载 Git for Windows 并静默安装

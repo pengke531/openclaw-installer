@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+RELEASE_VERSION="1.0.0"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
 
 INSTALL_METHOD=""
@@ -42,6 +43,17 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   bash install.sh --no-onboard
   bash install.sh --install-method git --git-dir ~/openclaw
   bash install.sh --dry-run --no-onboard
+EOF
+}
+
+print_banner() {
+    cat <<EOF
+============================================================
+OpenClaw 一键安装工具 v${RELEASE_VERSION}
+开发者：创造晴天
+微信：kerp531
+============================================================
+
 EOF
 }
 
@@ -106,6 +118,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
+            print_banner
             print_usage
             exit 0
             ;;
@@ -122,6 +135,8 @@ if [[ -n "$INSTALL_METHOD" && "$INSTALL_METHOD" != "npm" && "$INSTALL_METHOD" !=
     echo "错误：--install-method 只支持 npm 或 git"
     exit 2
 fi
+
+print_banner
 
 tmp_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-official-install.XXXXXX.sh")"
 cleanup() {
