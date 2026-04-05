@@ -90,6 +90,7 @@ bash install.sh --dry-run --no-onboard
 ```powershell
 .\install-windows.ps1 -NoOnboard
 .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
+.\install-windows.ps1 -VerboseInstall
 .\install-windows.ps1 -DryRun -NoOnboard
 ```
 

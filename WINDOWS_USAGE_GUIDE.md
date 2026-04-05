@@ -65,6 +65,12 @@ powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 .\install-windows.ps1 -DryRun -NoOnboard
 ```
 
+增强诊断模式：
+
+```powershell
+.\install-windows.ps1 -VerboseInstall
+```
+
 开发者源码模式：
 
 ```powershell
@@ -83,6 +89,25 @@ openclaw gateway status
 
 ```powershell
 openclaw onboard --install-daemon
+```
+
+## 如果卡在 `Installing OpenClaw (openclaw@latest)...`
+
+先再等几分钟，因为这一步可能仍在下载 npm 包或被杀毒扫描。
+
+如果长时间没有变化，先在目标设备执行：
+
+```powershell
+node -v
+npm -v
+npm ping
+npm view openclaw version
+```
+
+如果这里正常，再执行更透明的安装命令：
+
+```powershell
+npm install -g openclaw@latest --loglevel verbose
 ```
 
 ## 常见判断

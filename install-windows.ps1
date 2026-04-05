@@ -5,6 +5,7 @@ param(
     [string]$Tag = "latest",
     [string]$GitDir,
     [switch]$NoOnboard,
+    [switch]$VerboseInstall,
     [switch]$DryRun,
     [switch]$Help
 )
@@ -43,6 +44,7 @@ function Show-Usage {
         "  -Tag [tag|version]        版本，默认 latest",
         "  -GitDir [path]            git 模式源码目录",
         "  -NoOnboard                安装后不进入 onboarding",
+        "  -VerboseInstall           包装层输出额外排查提示",
         "  -DryRun                   只打印计划动作",
         "  -Help                     显示帮助",
         "",
@@ -50,6 +52,7 @@ function Show-Usage {
         "  .\install-windows.ps1",
         "  .\install-windows.ps1 -NoOnboard",
         "  .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw",
+        "  .\install-windows.ps1 -VerboseInstall",
         "  .\install-windows.ps1 -DryRun -NoOnboard"
     )
     $lines -join [Environment]::NewLine
@@ -86,6 +89,9 @@ function Get-RelaunchArguments {
     }
     if ($NoOnboard) {
         $argsList.Add("-NoOnboard")
+    }
+    if ($VerboseInstall) {
+        $argsList.Add("-VerboseInstall")
     }
     if ($DryRun) {
         $argsList.Add("-DryRun")
@@ -200,6 +206,105 @@ function Ensure-GitReady {
     throw "无法自动安装 Git。请先手动安装 Git for Windows 后重试：https://git-scm.com/download/win"
 }
 
+function Write-DiagnosticHint {
+    Write-Host ""
+    Write-Host "[提示] 长时间没有新输出，当前很可能卡在 npm 全局安装阶段。" -ForegroundColor Yellow
+    Write-Host "[提示] 这通常不是脚本本身卡死，而是目标设备在下载、解压、杀毒扫描或等待 npm registry/GitHub 响应。" -ForegroundColor Yellow
+    Write-Host "[提示] 如果再等几分钟仍无变化，请在目标设备上手动执行以下排查命令：" -ForegroundColor Yellow
+    Write-Host "  node -v" -ForegroundColor Cyan
+    Write-Host "  npm -v" -ForegroundColor Cyan
+    Write-Host "  npm ping" -ForegroundColor Cyan
+    Write-Host "  npm view openclaw version" -ForegroundColor Cyan
+    Write-Host "  npm install -g openclaw@latest --loglevel verbose" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Invoke-OfficialInstallerWithMonitor {
+    param(
+        [string[]]$Arguments
+    )
+
+    $stdoutFile = Join-Path $env:TEMP ("openclaw-official-stdout-" + [guid]::NewGuid().ToString("N") + ".log")
+    $stderrFile = Join-Path $env:TEMP ("openclaw-official-stderr-" + [guid]::NewGuid().ToString("N") + ".log")
+    $sawInstallLine = $false
+    $hintShown = $false
+    $lastOutputAt = Get-Date
+    $stdoutLineCount = 0
+    $stderrLineCount = 0
+
+    try {
+        $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $Arguments -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -PassThru
+
+        while (-not $proc.HasExited) {
+            Start-Sleep -Seconds 3
+
+            if (Test-Path $stdoutFile) {
+                $stdoutLines = Get-Content $stdoutFile -ErrorAction SilentlyContinue
+                if ($stdoutLines.Count -gt $stdoutLineCount) {
+                    $newStdout = $stdoutLines[$stdoutLineCount..($stdoutLines.Count - 1)]
+                    foreach ($line in $newStdout) {
+                        Write-Host $line
+                        if ($line -like "*Installing OpenClaw*") {
+                            $sawInstallLine = $true
+                        }
+                    }
+                    $stdoutLineCount = $stdoutLines.Count
+                    $lastOutputAt = Get-Date
+                }
+            }
+
+            if (Test-Path $stderrFile) {
+                $stderrLines = Get-Content $stderrFile -ErrorAction SilentlyContinue
+                if ($stderrLines.Count -gt $stderrLineCount) {
+                    $newStderr = $stderrLines[$stderrLineCount..($stderrLines.Count - 1)]
+                    foreach ($line in $newStderr) {
+                        Write-Host $line -ForegroundColor Red
+                    }
+                    $stderrLineCount = $stderrLines.Count
+                    $lastOutputAt = Get-Date
+                }
+            }
+
+            $silentSeconds = [int]((Get-Date) - $lastOutputAt).TotalSeconds
+            if ($silentSeconds -ge 30) {
+                Write-Host "[等待中] 官方安装器已 $silentSeconds 秒没有新输出..." -ForegroundColor DarkYellow
+                $lastOutputAt = Get-Date
+            }
+
+            if ($sawInstallLine -and -not $hintShown -and $silentSeconds -ge 180) {
+                Write-DiagnosticHint
+                $hintShown = $true
+            }
+        }
+
+        if (Test-Path $stdoutFile) {
+            $stdoutLines = Get-Content $stdoutFile -ErrorAction SilentlyContinue
+            if ($stdoutLines.Count -gt $stdoutLineCount) {
+                $stdoutLines[$stdoutLineCount..($stdoutLines.Count - 1)] | ForEach-Object { Write-Host $_ }
+            }
+        }
+
+        if (Test-Path $stderrFile) {
+            $stderrLines = Get-Content $stderrFile -ErrorAction SilentlyContinue
+            if ($stderrLines.Count -gt $stderrLineCount) {
+                $stderrLines[$stderrLineCount..($stderrLines.Count - 1)] | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+            }
+        }
+
+        $proc.WaitForExit()
+        $proc.Refresh()
+        if ($null -eq $proc.ExitCode -or $proc.ExitCode -eq "") {
+            return
+        }
+        if ($proc.ExitCode -ne 0) {
+            throw "官方安装器退出码: $($proc.ExitCode)"
+        }
+    } finally {
+        Remove-Item $stdoutFile -Force -ErrorAction SilentlyContinue
+        Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if ($Help) {
     Show-Banner
     Show-Usage
@@ -247,4 +352,8 @@ $processArgs = @(
     $tempFile
 ) + $invokeArgs
 
-& powershell.exe $processArgs
+if ($VerboseInstall) {
+    Write-Host "已启用增强诊断模式：如果官方安装器长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
+}
+
+Invoke-OfficialInstallerWithMonitor -Arguments $processArgs
