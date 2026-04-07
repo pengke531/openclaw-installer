@@ -4,6 +4,8 @@ param(
     [string]$InstallMethod,
     [string]$Tag = "latest",
     [string]$GitDir,
+    [switch]$Uninstall,
+    [switch]$PurgeData,
     [switch]$NoOnboard,
     [switch]$VerboseInstall,
     [switch]$DryRun,
@@ -12,7 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.0.1"
+$Script:ReleaseVersion = "1.1.0"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
 
@@ -44,6 +46,8 @@ function Show-Usage {
         "  -InstallMethod [npm|git]  安装方式，默认 npm",
         "  -Tag [tag|version]        版本，默认 latest",
         "  -GitDir [path]            git 模式源码目录",
+        "  -Uninstall                一键卸载 OpenClaw CLI 与服务",
+        "  -PurgeData                与 -Uninstall 搭配，额外删除状态/工作区/配置",
         "  -NoOnboard                安装后不进入 onboarding",
         "  -VerboseInstall           包装层输出额外排查提示",
         "  -DryRun                   只打印计划动作",
@@ -51,6 +55,7 @@ function Show-Usage {
         "",
         "示例:",
         "  .\install-windows.ps1",
+        "  .\install-windows.ps1 -Uninstall -PurgeData",
         "  .\install-windows.ps1 -NoOnboard",
         "  .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw",
         "  .\install-windows.ps1 -VerboseInstall",
@@ -87,6 +92,12 @@ function Get-RelaunchArguments {
     if ($PSBoundParameters.ContainsKey("GitDir")) {
         $argsList.Add("-GitDir")
         $argsList.Add($GitDir)
+    }
+    if ($Uninstall) {
+        $argsList.Add("-Uninstall")
+    }
+    if ($PurgeData) {
+        $argsList.Add("-PurgeData")
     }
     if ($NoOnboard) {
         $argsList.Add("-NoOnboard")
@@ -524,6 +535,20 @@ function Test-OpenClawAvailable {
     }
 }
 
+function Get-OpenClawCommandPath {
+    $cmd = Get-Command openclaw.cmd -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+        return $cmd.Source
+    }
+
+    $plain = Get-Command openclaw -ErrorAction SilentlyContinue
+    if ($plain -and $plain.Source) {
+        return $plain.Source
+    }
+
+    return $null
+}
+
 function Ensure-OpenClawOnPath {
     Refresh-ProcessPath
     if (Test-OpenClawAvailable) {
@@ -605,6 +630,262 @@ function Install-OpenClawViaNpm {
     }
 }
 
+function Get-OpenClawStateDirectories {
+    $dirs = New-Object System.Collections.Generic.List[string]
+
+    if (-not [string]::IsNullOrWhiteSpace($env:OPENCLAW_STATE_DIR)) {
+        $dirs.Add($env:OPENCLAW_STATE_DIR)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE) -and (Test-Path -LiteralPath $env:USERPROFILE)) {
+        $dirs.Add((Join-Path $env:USERPROFILE ".openclaw"))
+        Get-ChildItem -LiteralPath $env:USERPROFILE -Force -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like ".openclaw-*" } |
+            ForEach-Object { $dirs.Add($_.FullName) }
+    }
+
+    return $dirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+}
+
+function Invoke-LoggedCommand {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [string]$Description,
+        [switch]$IgnoreFailure
+    )
+
+    $display = if ($Arguments -and $Arguments.Count -gt 0) {
+        "$FilePath $($Arguments -join ' ')"
+    } else {
+        $FilePath
+    }
+
+    if ($DryRun) {
+        Write-Host "[DryRun] $Description：$display" -ForegroundColor Yellow
+        return $true
+    }
+
+    Write-Host "$Description：$display" -ForegroundColor Cyan
+    & $FilePath @Arguments
+    $exitCode = $LASTEXITCODE
+
+    if ($IgnoreFailure) {
+        if ($exitCode -ne 0) {
+            Write-Host "已忽略失败，退出码：$exitCode" -ForegroundColor DarkYellow
+        }
+        return ($exitCode -eq 0)
+    }
+
+    if ($exitCode -ne 0) {
+        throw "$Description 失败，退出码：$exitCode"
+    }
+
+    return $true
+}
+
+function Remove-OpenClawScheduledTasks {
+    $taskRows = @()
+    try {
+        $raw = schtasks.exe /Query /FO CSV /NH 2>$null
+        if ($raw) {
+            $taskRows = $raw | ConvertFrom-Csv | Where-Object { $_.TaskName -like "\OpenClaw Gateway*" }
+        }
+    } catch {
+        $taskRows = @()
+    }
+
+    if (-not $taskRows -or $taskRows.Count -eq 0) {
+        Write-Host "未发现 OpenClaw 计划任务。" -ForegroundColor DarkGray
+        return
+    }
+
+    foreach ($task in $taskRows) {
+        $taskName = $task.TaskName.TrimStart("\")
+        Invoke-LoggedCommand -FilePath "schtasks.exe" -Arguments @("/Delete", "/F", "/TN", $taskName) -Description "删除 OpenClaw 计划任务" -IgnoreFailure
+    }
+}
+
+function Remove-OpenClawStartupEntries {
+    $startupTargets = New-Object System.Collections.Generic.List[string]
+
+    foreach ($startupDir in @([Environment]::GetFolderPath("Startup"), [Environment]::GetFolderPath("CommonStartup"))) {
+        if ([string]::IsNullOrWhiteSpace($startupDir) -or -not (Test-Path -LiteralPath $startupDir)) {
+            continue
+        }
+
+        Get-ChildItem -LiteralPath $startupDir -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "OpenClaw*" } |
+            ForEach-Object { $startupTargets.Add($_.FullName) }
+    }
+
+    foreach ($stateDir in Get-OpenClawStateDirectories) {
+        $gatewayCmd = Join-Path $stateDir "gateway.cmd"
+        if (Test-Path -LiteralPath $gatewayCmd) {
+            $startupTargets.Add($gatewayCmd)
+        }
+    }
+
+    $uniqueTargets = $startupTargets | Select-Object -Unique
+    if (-not $uniqueTargets -or $uniqueTargets.Count -eq 0) {
+        Write-Host "未发现 OpenClaw 启动项或 gateway.cmd。" -ForegroundColor DarkGray
+        return
+    }
+
+    foreach ($target in $uniqueTargets) {
+        if ($DryRun) {
+            Write-Host "[DryRun] 删除 OpenClaw 启动项：$target" -ForegroundColor Yellow
+            continue
+        }
+        if (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath $target -Force -Recurse -ErrorAction SilentlyContinue
+            Write-Host "已删除：$target" -ForegroundColor Yellow
+        }
+    }
+}
+
+function Remove-OpenClawStateData {
+    if (-not $PurgeData) {
+        Write-Host "未指定 -PurgeData，保留 OpenClaw 状态、工作区和配置数据。" -ForegroundColor DarkGray
+        return
+    }
+
+    $targets = New-Object System.Collections.Generic.List[string]
+    foreach ($stateDir in Get-OpenClawStateDirectories) {
+        $targets.Add($stateDir)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:OPENCLAW_CONFIG_PATH)) {
+        $targets.Add($env:OPENCLAW_CONFIG_PATH)
+    }
+
+    foreach ($target in ($targets | Select-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace($target)) {
+            continue
+        }
+        if ($DryRun) {
+            Write-Host "[DryRun] 删除 OpenClaw 数据目录/文件：$target" -ForegroundColor Yellow
+            continue
+        }
+        if (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "已删除 OpenClaw 数据：$target" -ForegroundColor Yellow
+        }
+    }
+}
+
+function Remove-OpenClawGitCheckout {
+    if ([string]::IsNullOrWhiteSpace($GitDir)) {
+        return
+    }
+
+    if (-not $PurgeData) {
+        Write-Host "已保留 git 源码目录；如需一并删除，请与 -Uninstall 搭配 -PurgeData -GitDir <路径>。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "[DryRun] 删除 OpenClaw git 源码目录：$GitDir" -ForegroundColor Yellow
+        return
+    }
+
+    if (Test-Path -LiteralPath $GitDir) {
+        Remove-Item -LiteralPath $GitDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "已删除 OpenClaw git 源码目录：$GitDir" -ForegroundColor Yellow
+    }
+}
+
+function Remove-OpenClawCliShims {
+    $targets = New-Object System.Collections.Generic.List[string]
+    $prefixes = New-Object System.Collections.Generic.List[string]
+
+    try {
+        $npmStatus = Test-NpmAvailable
+        if ($npmStatus.Available) {
+            $prefix = (& $npmStatus.Path config get prefix).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($prefix)) {
+                $prefixes.Add($prefix)
+            }
+        }
+    } catch {}
+
+    if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
+        $prefixes.Add((Join-Path $env:APPDATA "npm"))
+    }
+
+    foreach ($prefix in ($prefixes | Select-Object -Unique)) {
+        foreach ($name in @("openclaw", "openclaw.cmd", "openclaw.ps1")) {
+            $targets.Add((Join-Path $prefix $name))
+        }
+        $binDir = Join-Path $prefix "bin"
+        foreach ($name in @("openclaw", "openclaw.cmd")) {
+            $targets.Add((Join-Path $binDir $name))
+        }
+    }
+
+    foreach ($target in ($targets | Select-Object -Unique)) {
+        if ($DryRun) {
+            Write-Host "[DryRun] 清理 OpenClaw 命令残留：$target" -ForegroundColor Yellow
+            continue
+        }
+        if (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+            Write-Host "已清理命令残留：$target" -ForegroundColor Yellow
+        }
+    }
+}
+
+function Remove-OpenClawGlobalPackage {
+    $npm = Test-NpmAvailable
+    if (-not $npm.Available) {
+        Write-Host "未检测到 npm，跳过 npm 全局卸载。" -ForegroundColor DarkGray
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "[DryRun] $($npm.Path) rm -g openclaw --loglevel error" -ForegroundColor Yellow
+        return
+    }
+
+    Invoke-LoggedCommand -FilePath $npm.Path -Arguments @("rm", "-g", "openclaw", "--loglevel", "error") -Description "卸载 npm 全局包 openclaw" -IgnoreFailure
+}
+
+function Uninstall-OpenClaw {
+    Write-Host "开始执行 OpenClaw 卸载流程..." -ForegroundColor Cyan
+
+    $cliPath = Get-OpenClawCommandPath
+    if ($cliPath) {
+        $uninstallArgs = @("uninstall")
+        if ($PurgeData) {
+            $uninstallArgs += @("--all", "--yes", "--non-interactive")
+        } else {
+            $uninstallArgs += @("--service", "--yes", "--non-interactive")
+        }
+
+        Invoke-LoggedCommand -FilePath $cliPath -Arguments $uninstallArgs -Description "调用 OpenClaw 官方内置卸载器" -IgnoreFailure | Out-Null
+        Invoke-LoggedCommand -FilePath $cliPath -Arguments @("gateway", "stop") -Description "停止 OpenClaw 网关" -IgnoreFailure | Out-Null
+        Invoke-LoggedCommand -FilePath $cliPath -Arguments @("gateway", "uninstall") -Description "卸载 OpenClaw 网关服务" -IgnoreFailure | Out-Null
+    } else {
+        Write-Host "当前未检测到 openclaw 命令，直接执行手工清理兜底。" -ForegroundColor Yellow
+    }
+
+    Remove-OpenClawScheduledTasks
+    Remove-OpenClawStartupEntries
+    Remove-OpenClawStateData
+    Remove-OpenClawGlobalPackage
+    Remove-OpenClawCliShims
+    Remove-OpenClawGitCheckout
+
+    Write-Host ""
+    Write-Host "OpenClaw 卸载流程已执行完成。" -ForegroundColor Green
+    if ($PurgeData) {
+        Write-Host "本次已包含状态、工作区和配置清理。" -ForegroundColor Green
+    } else {
+        Write-Host "本次未删除本地状态/工作区；如需彻底清仓，请使用：-Uninstall -PurgeData" -ForegroundColor Yellow
+    }
+    Write-Host "Node.js 与 Git 为通用依赖，本脚本不会自动卸载它们。" -ForegroundColor DarkGray
+}
+
 function Invoke-GitInstallViaOfficialInstaller {
     param(
         [string[]]$Arguments
@@ -622,6 +903,12 @@ if ($Help) {
 
 Show-Banner
 Ensure-ElevatedIfNeeded
+
+if ($Uninstall) {
+    Uninstall-OpenClaw
+    exit 0
+}
+
 Ensure-GitReady
 
 $invokeArgs = @()
@@ -644,16 +931,15 @@ if ($DryRun) {
     $invokeArgs += "-DryRun"
 }
 
-$processArgs = @(
-    "-NoProfile"
-    "-ExecutionPolicy"
-    "Bypass"
-    "-File"
-    $tempFile
-) + $invokeArgs
-
 if ($InstallMethod -eq "git") {
     $tempFile = Join-Path $env:TEMP "openclaw-official-install.ps1"
+    $processArgs = @(
+        "-NoProfile"
+        "-ExecutionPolicy"
+        "Bypass"
+        "-File"
+        $tempFile
+    ) + $invokeArgs
     Write-Host "正在下载 OpenClaw 官方 Windows 安装器..." -ForegroundColor Cyan
     Invoke-WebRequest -UseBasicParsing -Uri $OfficialInstallUrl -OutFile $tempFile
     Write-Host "已切换到官方安装路径：$($OfficialInstallUrl)" -ForegroundColor Green

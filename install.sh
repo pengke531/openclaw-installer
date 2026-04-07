@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.0.0"
+RELEASE_VERSION="1.1.0"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
 
 INSTALL_METHOD=""
 VERSION="latest"
 GIT_DIR=""
+UNINSTALL=0
+PURGE_DATA=0
 NO_ONBOARD=0
 DRY_RUN=0
 VERBOSE=0
@@ -17,19 +19,21 @@ print_usage() {
     cat <<'EOF'
 OpenClaw 安装包装脚本（Linux / macOS / WSL）
 
-用途:
+用途：
   这个脚本不再自己维护复杂安装逻辑，而是转调 OpenClaw 官方安装器，
-  适合你本地运行、拷贝给别人运行，或作为 GitHub Raw 一键安装入口。
+  同时补充一键卸载入口，适合本地执行、发给别人执行，或作为 GitHub Raw 命令入口。
 
-用法:
+用法：
   bash install.sh [选项]
 
-常用选项:
+常用选项：
   --install-method <npm|git>  安装方式，默认 npm
   --npm                       等价于 --install-method npm
   --git                       等价于 --install-method git
   --version <tag|version>     版本，默认 latest
-  --git-dir <path>            git 模式下源码目录
+  --git-dir <path>            git 模式源码目录
+  --uninstall                 一键卸载 OpenClaw CLI 与服务
+  --purge-data                与 --uninstall 搭配，额外删除状态/工作区/配置
   --no-onboard                安装后不进入 onboarding
   --onboard                   安装后进入 onboarding
   --no-prompt                 非交互模式
@@ -38,10 +42,11 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   --beta                      使用 beta 通道
   -h, --help                  显示帮助
 
-示例:
+示例：
   bash install.sh
   bash install.sh --no-onboard
   bash install.sh --install-method git --git-dir ~/openclaw
+  bash install.sh --uninstall --purge-data
   bash install.sh --dry-run --no-onboard
 EOF
 }
@@ -50,8 +55,7 @@ print_banner() {
     cat <<EOF
 ============================================================
 OpenClaw 一键安装工具 v${RELEASE_VERSION}
-开发者：创造晴天
-微信：kerp531
+开发者：创造晴天 / 微信：kerp531
 ============================================================
 
 EOF
@@ -69,6 +73,119 @@ download_to() {
         echo "错误：需要 curl 或 wget 来下载官方安装器。"
         exit 1
     fi
+}
+
+run_or_echo() {
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DryRun] $*"
+        return 0
+    fi
+    "$@"
+}
+
+collect_state_dirs() {
+    local dirs=()
+
+    if [[ -n "${OPENCLAW_STATE_DIR:-}" ]]; then
+        dirs+=("$OPENCLAW_STATE_DIR")
+    fi
+
+    dirs+=("$HOME/.openclaw")
+
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && dirs+=("$dir")
+    done < <(find "$HOME" -maxdepth 1 -type d -name '.openclaw-*' 2>/dev/null | sort)
+
+    printf '%s\n' "${dirs[@]}" | awk 'NF && !seen[$0]++'
+}
+
+remove_path_if_exists() {
+    local target="$1"
+    if [[ -z "$target" ]]; then
+        return 0
+    fi
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DryRun] rm -rf $target"
+        return 0
+    fi
+    if [[ -e "$target" || -L "$target" ]]; then
+        rm -rf "$target"
+        echo "已删除：$target"
+    fi
+}
+
+uninstall_openclaw() {
+    echo "开始执行 OpenClaw 卸载流程..."
+
+    if command -v openclaw >/dev/null 2>&1; then
+        if [[ "$PURGE_DATA" -eq 1 ]]; then
+            run_or_echo openclaw uninstall --all --yes --non-interactive || true
+        else
+            run_or_echo openclaw uninstall --service --yes --non-interactive || true
+        fi
+        run_or_echo openclaw gateway stop || true
+        run_or_echo openclaw gateway uninstall || true
+    else
+        echo "未检测到 openclaw 命令，直接执行手工清理兜底。"
+    fi
+
+    case "$(uname -s)" in
+        Darwin*)
+            while IFS= read -r agent; do
+                [[ -n "$agent" ]] || continue
+                label="$(basename "$agent" .plist)"
+                run_or_echo launchctl bootout "gui/$UID/$label" || true
+                remove_path_if_exists "$agent"
+            done < <(find "$HOME/Library/LaunchAgents" -maxdepth 1 -type f \( -name 'ai.openclaw*.plist' -o -name 'com.openclaw*.plist' \) 2>/dev/null | sort)
+            ;;
+        Linux*)
+            if command -v systemctl >/dev/null 2>&1; then
+                while IFS= read -r unit; do
+                    [[ -n "$unit" ]] || continue
+                    name="$(basename "$unit")"
+                    run_or_echo systemctl --user disable --now "$name" || true
+                    remove_path_if_exists "$unit"
+                done < <(find "$HOME/.config/systemd/user" -maxdepth 1 -type f -name 'openclaw-gateway*.service' 2>/dev/null | sort)
+                run_or_echo systemctl --user daemon-reload || true
+            fi
+            ;;
+    esac
+
+    if command -v npm >/dev/null 2>&1; then
+        run_or_echo npm rm -g openclaw --loglevel error || true
+        npm_prefix="$(npm config get prefix 2>/dev/null || true)"
+        remove_path_if_exists "${npm_prefix}/bin/openclaw"
+        remove_path_if_exists "${npm_prefix}/openclaw"
+    fi
+    if command -v pnpm >/dev/null 2>&1; then
+        run_or_echo pnpm remove -g openclaw || true
+    fi
+    if command -v bun >/dev/null 2>&1; then
+        run_or_echo bun remove -g openclaw || true
+    fi
+
+    remove_path_if_exists "$HOME/.local/bin/openclaw"
+
+    if [[ "$PURGE_DATA" -eq 1 ]]; then
+        while IFS= read -r state_dir; do
+            remove_path_if_exists "$state_dir"
+        done < <(collect_state_dirs)
+
+        if [[ -n "${OPENCLAW_CONFIG_PATH:-}" ]]; then
+            remove_path_if_exists "$OPENCLAW_CONFIG_PATH"
+        fi
+        if [[ -n "$GIT_DIR" ]]; then
+            remove_path_if_exists "$GIT_DIR"
+        fi
+    else
+        echo "未指定 --purge-data，保留 OpenClaw 状态、工作区和配置数据。"
+        if [[ -n "$GIT_DIR" ]]; then
+            echo "已保留 git 源码目录；如需一并删除，请与 --uninstall 搭配 --purge-data --git-dir <path>。"
+        fi
+    fi
+
+    echo "OpenClaw 卸载流程已执行完成。"
+    echo "Node.js、Git、pnpm、bun 属于通用依赖，本脚本不会自动卸载它们。"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -92,6 +209,14 @@ while [[ $# -gt 0 ]]; do
         --git-dir|--dir)
             GIT_DIR="${2:-}"
             shift 2
+            ;;
+        --uninstall)
+            UNINSTALL=1
+            shift
+            ;;
+        --purge-data)
+            PURGE_DATA=1
+            shift
             ;;
         --no-onboard)
             NO_ONBOARD=1
@@ -137,6 +262,11 @@ if [[ -n "$INSTALL_METHOD" && "$INSTALL_METHOD" != "npm" && "$INSTALL_METHOD" !=
 fi
 
 print_banner
+
+if [[ "$UNINSTALL" -eq 1 ]]; then
+    uninstall_openclaw
+    exit 0
+fi
 
 tmp_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-official-install.XXXXXX.sh")"
 cleanup() {

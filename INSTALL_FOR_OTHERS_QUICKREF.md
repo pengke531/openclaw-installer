@@ -1,53 +1,62 @@
-# OpenClaw 给别人安装快速参考
+# OpenClaw 安装 / 卸载快速参考
 
-## 一句话判断
+开发者：创造晴天  
+微信：kerp531
 
-- 对方电脑能联网：不用拷整个项目，直接在线安装。
-- 对方电脑不能联网：当前这个稳定版不适用。
-- 你要现场帮装：拷一个脚本就够，不用拷整个仓库。
-
-## Windows
-
-在线：
+## Windows 安装
 
 ```powershell
-& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1)))
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
-本地单文件：
+## Windows 一键彻底卸载
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-uninstall.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-uninstall.ps1" -Uninstall -PurgeData
 ```
 
-## Linux / macOS / WSL
-
-在线：
+## Linux / macOS / WSL 安装
 
 ```bash
-curl -fsSL https://openclaw.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
 ```
 
-本地单文件：
+## Linux / macOS / WSL 一键彻底卸载
 
 ```bash
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash -s -- --uninstall --purge-data
 ```
 
-## 跳过 onboarding
+## 常用变体
+
+Windows 跳过 onboarding：
 
 ```powershell
 .\install-windows.ps1 -NoOnboard
 ```
 
+Windows DryRun：
+
+```powershell
+.\install-windows.ps1 -DryRun -NoOnboard
+```
+
+Windows git 模式：
+
+```powershell
+.\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
+```
+
+Linux / macOS / WSL 跳过 onboarding：
+
 ```bash
 bash install.sh --no-onboard
 ```
 
-## 安装后验证
+Linux / macOS / WSL git 模式：
 
 ```bash
-openclaw --version
-openclaw doctor
-openclaw gateway status
+bash install.sh --install-method git --git-dir ~/openclaw
 ```

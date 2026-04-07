@@ -1,19 +1,19 @@
 # OpenClaw Windows 使用说明
 
+开发者：创造晴天  
+微信：kerp531
+
 ## 适合谁
 
 - 你本人在目标电脑前操作
-- 你远程协助对方安装
-- 对方愿意自己复制一条 PowerShell 命令执行
-
-开发者：创造晴天
-微信：kerp531
+- 你远程协助别人安装
+- 你希望让别人复制一条 PowerShell 命令即可安装或卸载
 
 ## 前提条件
 
-- Windows 10/11
+- Windows 10 / 11
 - PowerShell 5+
-- 机器可以联网访问：
+- 目标机器可以访问：
   - `https://openclaw.ai`
   - `https://nodejs.org`
   - `https://registry.npmjs.org`
@@ -22,25 +22,27 @@
 ## 脚本会自动做什么
 
 - 显示开发者信息
-- 非 DryRun 模式下，缺少管理员权限时自动请求 UAC 提权
-- 检查 Node.js 22+ 是否存在，缺失时自动安装 Node.js LTS
-- 检查 npm 是否可用
+- 非 `DryRun` 模式下自动申请管理员权限
+- 检查 Node.js 22+
+- 检查 npm
 - 检查并修正 npm 全局前缀到用户目录
-- 检查并修正 npm/OpenClaw 所在目录到用户 PATH
-- 检查 Git 是否存在
-- 缺少 Git 时优先通过 `winget` 安装 Git for Windows
-- `winget` 不可用或失败时，自动下载 Git for Windows 并静默安装
-- 默认 `npm` 模式下直接执行官方推荐命令 `npm install -g openclaw@latest`
-- `git` 模式下继续调用 OpenClaw 官方安装器
+- 检查并修正 npm / OpenClaw 所在目录到用户 PATH
+- 检查 Git
+- 缺 Git 时优先通过 `winget` 安装 Git for Windows
+- `winget` 失败时自动下载 Git for Windows 并静默安装
+- 默认 `npm` 模式直接执行官方推荐命令 `npm install -g openclaw@latest`
+- 支持一键卸载 OpenClaw，并可选择彻底清理状态/工作区/配置
 
-## 方法 1：本地直接运行仓库脚本
+## 安装
+
+### 方法 1：本地直接运行仓库脚本
 
 ```powershell
 cd D:\claude\openclaw-installer-lite
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-## 方法 2：只拷一个脚本到对方电脑
+### 方法 2：只发一个脚本给对方
 
 把 [`install-windows.ps1`](/D:/claude/openclaw-installer-lite/install-windows.ps1) 发给对方，对方执行：
 
@@ -48,15 +50,14 @@ powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-## 方法 3：远程在线安装
-
-适合你不想传文件，只想让对方复制命令：
+### 方法 3：远程在线安装
 
 ```powershell
-& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1)))
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
-## 常用变体
+## 常用安装变体
 
 跳过 onboarding：
 
@@ -82,6 +83,54 @@ powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
 ```
 
+## 卸载
+
+推荐直接使用一键彻底卸载：
+
+```powershell
+.\install-windows.ps1 -Uninstall -PurgeData
+```
+
+远程设备也可以直接执行：
+
+```powershell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1" -Uninstall -PurgeData
+```
+
+如果你只想卸载 CLI 和服务，暂时保留数据：
+
+```powershell
+.\install-windows.ps1 -Uninstall
+```
+
+如果当初是 `git` 模式安装，并且希望连源码目录一起删除：
+
+```powershell
+.\install-windows.ps1 -Uninstall -PurgeData -GitDir C:\openclaw
+```
+
+## 卸载时脚本会做什么
+
+- 优先调用官方 `openclaw uninstall`
+- 尝试停止并卸载 Gateway 服务
+- 如果 `openclaw` 命令已经不存在，自动做手工清理兜底
+- 清理 Windows 计划任务 `OpenClaw Gateway`
+- 清理 Startup 启动项
+- 清理用户状态目录里的 `gateway.cmd`
+- 清理 npm 全局安装残留
+- `-PurgeData` 会删除：
+  - `C:\Users\<用户名>\.openclaw`
+  - `C:\Users\<用户名>\.openclaw-<profile>`
+  - `OPENCLAW_CONFIG_PATH` 指向的自定义配置文件
+  - 你显式传入的 `-GitDir`
+
+不会自动卸载：
+
+- Node.js
+- Git for Windows
+- 其他通用依赖
+
 ## 安装完成后建议执行
 
 ```powershell
@@ -96,9 +145,9 @@ openclaw gateway status
 openclaw onboard --install-daemon
 ```
 
-## 如果卡在 `Installing OpenClaw (openclaw@latest)...`
+## 如果卡在 npm 安装阶段
 
-先再等几分钟，因为这一步可能仍在下载 npm 包或被杀毒扫描。
+先再等几分钟，因为这一步可能仍在下载 npm 包、解压依赖，或被杀毒软件扫描。
 
 如果长时间没有变化，先在目标设备执行：
 
@@ -109,7 +158,7 @@ npm ping
 npm view openclaw version
 ```
 
-如果这里正常，再执行更透明的安装命令：
+如果这些正常，再执行：
 
 ```powershell
 npm install -g openclaw@latest --loglevel verbose
@@ -117,12 +166,9 @@ npm install -g openclaw@latest --loglevel verbose
 
 ## 常见判断
 
-- 是否需要拷文件到对方电脑？
-  - 不需要，如果对方直接在线执行官方或你仓库里的 Raw 命令。
-  - 需要，如果你选择发一个本地脚本给对方离线保存后再运行。
-
-- 是否要拷整个项目？
-  - 不要。Windows 场景下通常只需要一个 `install-windows.ps1`。
-
+- 是否需要把整个项目拷给对方？
+  - 不需要。Windows 场景通常只要发一个 `install-windows.ps1`，或者直接发 Raw 远程命令。
 - 是否支持完全离线？
-  - 目前不支持。这个稳定版要求联网。
+  - 当前不支持。
+- 是否能完全零交互？
+  - 不能保证。UAC 提权、管理员确认、网络策略都可能仍需人工确认。

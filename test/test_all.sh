@@ -9,6 +9,7 @@ bash -n "$ROOT_DIR/install.sh"
 
 echo "== 帮助输出检查 =="
 bash "$ROOT_DIR/install.sh" --help | grep -q "OpenClaw 安装包装脚本"
+bash "$ROOT_DIR/install.sh" --help | grep -q -- "--uninstall"
 
 echo "== 核心文件占位符检查 =="
 TARGETS=(

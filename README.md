@@ -1,81 +1,94 @@
-# OpenClaw Installer v1.0.0
+# OpenClaw Installer v1.1.0
 
-一个面向“帮别人安装 OpenClaw”的正式可交付包装项目。
+面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
-这个仓库现在只做一件事：把安装入口收敛成稳定、可转发、可本地执行的脚本，并尽量校准到 OpenClaw 官方推荐安装命令，而不是自己维护一套容易漂移的安装逻辑。
+这个仓库现在只做一件事：把 OpenClaw 的安装和卸载入口整理成稳定、可转发、可本地执行的脚本，并尽量对齐官方安装/卸载路径，而不是自己长期维护一套容易漂移的逻辑。
 
-开发者：创造晴天
+开发者：创造晴天  
 微信：kerp531
 
-## 当前支持范围
+## 当前支持
 
 - Windows 原生安装
+- Windows 原生一键卸载
 - Linux / macOS / WSL 安装
+- Linux / macOS / WSL 一键卸载
 - 本地执行
 - 远程在线执行
-- 从源码 `git` 安装或默认 `npm` 安装
-- Windows 缺少 Git 时自动补装 Git for Windows
-- Windows 实际安装时自动请求管理员权限
-- Windows 会先检查 Node.js、npm、npm 全局前缀和 PATH，再安装 OpenClaw
+- `npm` 安装
+- `git` 源码安装
+- Windows 缺少 Node.js、npm、Git 时自动补环境
+- Windows 自动修正 npm 全局前缀与 PATH
+- Windows 卸载时优先调用官方 `openclaw uninstall`，CLI 不在时自动做手工清理兜底
 
 ## 当前不支持
 
 - 真正离线安装
 - 自带依赖包分发
-- 不联网完成安装
+- 完全不联网完成安装
 
-如果目标机器无法访问 `openclaw.ai`、`nodejs.org`、npm registry 或 GitHub，这个项目不适合直接使用。
+如果目标机器无法访问 `openclaw.ai`、`nodejs.org`、`registry.npmjs.org`、`github.com`，这个项目不适合直接使用。
 
-## 当前版本结论
-
-- Windows：已针对“用户名/路径异常导致 Git 自举失败”做补强
-- Windows 默认 `npm` 模式会直接执行官方推荐命令 `npm install -g openclaw@latest`
-- Windows 会优先把 npm 全局安装目录调整到用户目录，降低权限问题和空白窗口问题
-- Linux / macOS / WSL：未发现与本次 Windows 问题同类的 Git 自举缺陷
-- 仍然依赖官方安装器的网络可用性和上游行为
-
-## 推荐用法
+## 安装
 
 ### Windows
 
-本地文件运行：
+本地运行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 ```
 
-远程在线运行：
+远程运行你仓库里的脚本：
 
 ```powershell
-& ([scriptblock]::Create((iwr -useb https://openclaw.ai/install.ps1)))
-```
-
-如果你要通过自己的 GitHub 仓库转发：
-
-```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/<你的GitHub用户名>/<你的仓库名>/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
 ### Linux / macOS / WSL
 
-本地文件运行：
+本地运行：
 
 ```bash
 bash install.sh
 ```
 
-远程在线运行官方安装器：
+远程运行你仓库里的脚本：
 
 ```bash
-curl -fsSL https://openclaw.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
 ```
 
-如果你要通过自己的 GitHub 仓库转发：
+## 卸载
+
+### Windows 一键彻底卸载
+
+本地运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1 -Uninstall -PurgeData
+```
+
+远程运行：
+
+```powershell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1" -Uninstall -PurgeData
+```
+
+### Linux / macOS / WSL 一键彻底卸载
+
+本地运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<你的GitHub用户名>/<你的仓库名>/main/install.sh -o install.sh
-bash install.sh
+bash install.sh --uninstall --purge-data
+```
+
+远程运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash -s -- --uninstall --purge-data
 ```
 
 ## 常用参数
@@ -86,6 +99,7 @@ bash install.sh
 bash install.sh --no-onboard
 bash install.sh --install-method git --git-dir ~/openclaw
 bash install.sh --dry-run --no-onboard
+bash install.sh --uninstall --purge-data
 ```
 
 ### PowerShell
@@ -95,24 +109,35 @@ bash install.sh --dry-run --no-onboard
 .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
 .\install-windows.ps1 -VerboseInstall
 .\install-windows.ps1 -DryRun -NoOnboard
+.\install-windows.ps1 -Uninstall -PurgeData
 ```
+
+## 卸载说明
+
+- `-Uninstall` / `--uninstall`：卸载 OpenClaw CLI 与 Gateway 服务
+- `-PurgeData` / `--purge-data`：额外删除状态目录、工作区、配置和显式传入的 git 源码目录
+- Windows 会优先调用官方 `openclaw uninstall`
+- 如果 `openclaw` 命令已经不存在，脚本会自动尝试清理计划任务、Startup 启动项、`gateway.cmd`、npm 全局残留
+- 脚本不会自动卸载 `Node.js`、`Git`、`pnpm`、`bun` 这类通用依赖
 
 ## 使用建议
 
 - 普通用户安装：默认 `npm` 模式
 - 开发者或要改源码：`git` 模式
-- 远程协助：优先让对方在线执行，不要先拷整个仓库
-- 本地交付：只需拷单个脚本，不必拷整个项目
+- 远程协助：优先让对方直接执行 Raw 命令，不必先发整个仓库
+- 彻底卸载：直接使用 `-Uninstall -PurgeData` 或 `--uninstall --purge-data`
+- 如果当初是 `git` 模式安装，卸载时加上 `-GitDir <路径>` 或 `--git-dir <path>`，这样能顺带删掉源码目录
 
 ## 文档
 
 - [Windows 使用说明](./WINDOWS_USAGE_GUIDE.md)
-- [给别人安装的步骤](./docs/INSTALL_FOR_OTHERS.md)
 - [快速参考卡](./INSTALL_FOR_OTHERS_QUICKREF.md)
-- [单文件交付方式](./SINGLE_FILE_INSTALL.md)
+- [安装总说明](./docs/INSTALLATION_GUIDE.md)
+- [给别人安装的步骤](./docs/INSTALL_FOR_OTHERS.md)
 
 ## 设计原则
 
-1. 官方安装逻辑优先，避免本仓库和上游行为漂移。
-2. 对外只暴露少量稳定参数。
-3. 文档只写当前真实支持的路径，不再保留未落地的离线能力描述。
+1. 优先复用官方安装器和官方卸载器，减少上游变动带来的维护成本。
+2. 对外暴露少量稳定参数，让普通用户更容易执行。
+3. 安装与卸载都支持本地和远程两种分发方式。
+4. 文档只写当前真实支持的路径，不虚构离线能力。
