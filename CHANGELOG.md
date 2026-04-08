@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.0 - 2026-04-08
+
+- Added self-healing bootstrap for OpenClaw 2026.4.8 environments with broken or incompatible existing config.
+- Installers now detect config read failures, back up the old config, and write a minimal local config to finish gateway/token/dashboard setup.
+- Strengthened one-click deploy behavior on machines with old plugin residue or broken channel config.
+
 ## v1.1.0 - 2026-04-07
 
 - Added one-click uninstall support for Windows and Bash entrypoints.

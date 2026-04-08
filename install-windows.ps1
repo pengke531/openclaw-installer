@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.2.0"
+$Script:ReleaseVersion = "1.3.0"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
 
@@ -712,6 +712,131 @@ function Get-OpenClawConfigPath {
     return $null
 }
 
+function Get-DefaultOpenClawStateDir {
+    if (-not [string]::IsNullOrWhiteSpace($env:OPENCLAW_STATE_DIR)) {
+        return $env:OPENCLAW_STATE_DIR
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        return (Join-Path $env:USERPROFILE ".openclaw")
+    }
+    return $null
+}
+
+function New-OpenClawBootstrapToken {
+    $bytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    return (-join ($bytes | ForEach-Object { $_.ToString("x2") }))
+}
+
+function Backup-OpenClawConfig {
+    param(
+        [string]$ConfigPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ConfigPath) -or -not (Test-Path -LiteralPath $ConfigPath)) {
+        return $null
+    }
+
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backupPath = "$ConfigPath.installer-backup-$timestamp.json"
+    Copy-Item -LiteralPath $ConfigPath -Destination $backupPath -Force
+    return $backupPath
+}
+
+function Write-MinimalOpenClawConfig {
+    param(
+        [string]$ConfigPath,
+        [string]$GatewayToken
+    )
+
+    $stateDir = Get-DefaultOpenClawStateDir
+    if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+        throw "无法确定 OpenClaw 配置路径。"
+    }
+
+    $configDir = Split-Path -Parent $ConfigPath
+    if (-not [string]::IsNullOrWhiteSpace($configDir) -and -not (Test-Path -LiteralPath $configDir)) {
+        New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($stateDir) -and -not (Test-Path -LiteralPath $stateDir)) {
+        New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+    }
+
+    $configObject = [ordered]@{
+        gateway = [ordered]@{
+            mode = "local"
+            bind = "loopback"
+            auth = [ordered]@{
+                mode = "token"
+                token = $GatewayToken
+            }
+            trustedProxies = @("127.0.0.1", "::1")
+        }
+        meta = [ordered]@{
+            lastTouchedAt = (Get-Date).ToUniversalTime().ToString("o")
+            lastTouchedVersion = "installer-bootstrap"
+        }
+    }
+
+    $json = $configObject | ConvertTo-Json -Depth 10
+    Set-Content -LiteralPath $ConfigPath -Value $json -Encoding UTF8
+}
+
+function Test-OpenClawConfigHealthy {
+    if (-not (Test-OpenClawAvailable)) {
+        return $false
+    }
+
+    $output = ""
+    try {
+        $output = (& openclaw dashboard --no-open 2>&1 | Out-String)
+    } catch {
+        $output = $_ | Out-String
+    }
+
+    if ($output -match "Failed to read config" -or $output -match "MODULE_NOT_FOUND" -or $output -match "Cannot find module") {
+        return $false
+    }
+
+    return $true
+}
+
+function Ensure-OpenClawBootstrapConfig {
+    $configPath = Get-OpenClawConfigPath
+    if ([string]::IsNullOrWhiteSpace($configPath)) {
+        $configPath = Join-Path $env:USERPROFILE ".openclaw\\openclaw.json"
+    }
+
+    if ($DryRun) {
+        Write-Host "[DryRun] 检查 OpenClaw 配置健康状态；若发现 4.8 配置/扩展冲突，将自动备份并写入最小本地配置。" -ForegroundColor Yellow
+        return
+    }
+
+    $configExists = Test-Path -LiteralPath $configPath
+    $configHealthy = $false
+    if ($configExists) {
+        $configHealthy = Test-OpenClawConfigHealthy
+    }
+
+    if ($configExists -and $configHealthy) {
+        Write-Host "OpenClaw 现有配置读取正常，继续使用当前配置。" -ForegroundColor Green
+        return
+    }
+
+    if ($configExists -and -not $configHealthy) {
+        $backupPath = Backup-OpenClawConfig -ConfigPath $configPath
+        if ($backupPath) {
+            Write-Host "检测到现有配置可能与当前 OpenClaw 版本不兼容，已自动备份到：$backupPath" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "未发现可用的 OpenClaw 配置，将创建一份最小本地配置。" -ForegroundColor Yellow
+    }
+
+    $bootstrapToken = New-OpenClawBootstrapToken
+    Write-MinimalOpenClawConfig -ConfigPath $configPath -GatewayToken $bootstrapToken
+    Write-Host "已写入最小 OpenClaw 本地配置，用于完成首次启动。" -ForegroundColor Green
+}
+
 function Get-OpenClawConfigObject {
     $configPath = Get-OpenClawConfigPath
     if ([string]::IsNullOrWhiteSpace($configPath) -or -not (Test-Path -LiteralPath $configPath)) {
@@ -743,11 +868,14 @@ function Ensure-OpenClawFirstLaunch {
     Write-Host "正在执行 OpenClaw 首次启动自检..." -ForegroundColor Cyan
 
     if ($DryRun) {
+        Write-Host "[DryRun] 检查 OpenClaw 配置健康状态；必要时备份旧配置并写入最小本地配置" -ForegroundColor Yellow
         Write-Host "[DryRun] openclaw doctor --repair --generate-gateway-token --yes --non-interactive" -ForegroundColor Yellow
         Write-Host "[DryRun] openclaw gateway install --force --token <generated-token>" -ForegroundColor Yellow
         Write-Host "[DryRun] openclaw dashboard" -ForegroundColor Yellow
         return
     }
+
+    Ensure-OpenClawBootstrapConfig
 
     try {
         & openclaw doctor --repair --generate-gateway-token --yes --non-interactive

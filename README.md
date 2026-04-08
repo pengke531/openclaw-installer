@@ -1,4 +1,4 @@
-# OpenClaw Installer v1.2.0
+# OpenClaw Installer v1.3.0
 
 面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
@@ -22,6 +22,7 @@
 - Windows 自动修正 npm 缓存目录权限
 - Windows 卸载时优先调用官方 `openclaw uninstall`，CLI 不在时自动做手工清理兜底
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开 OpenClaw 控制台
+- 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置继续部署
 
 ## 当前不支持
 
@@ -126,6 +127,12 @@ bash install.sh --uninstall --purge-data
 - 自动打开 `openclaw dashboard`
 
 这样做的目标是让用户安装完就能直接进入 OpenClaw 控制台，不再手工处理 gateway token。
+
+如果检测到现有配置、旧插件残留或渠道扩展依赖会导致 OpenClaw 4.8 CLI 读配置失败，安装器会自动：
+
+- 备份旧 `openclaw.json`
+- 写入一份最小本地配置
+- 用最小配置继续完成 token、gateway、dashboard 首装闭环
 
 如果你只想完成安装、不自动打开控制台：
 

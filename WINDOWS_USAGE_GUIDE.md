@@ -34,6 +34,7 @@
 - 默认 `npm` 模式直接执行官方推荐命令 `npm install -g openclaw@latest`
 - 支持一键卸载 OpenClaw，并可选择彻底清理状态/工作区/配置
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开控制台
+- 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置
 
 ## 安装
 
@@ -160,6 +161,12 @@ openclaw onboard --install-daemon
 - 自动打开 `openclaw dashboard`
 
 这样做的目标是避免用户安装完成后，还要手工复制 token 注入网页。
+
+如果检测到现有 `openclaw.json` 或扩展依赖会让 OpenClaw 4.8 CLI 无法读取配置，安装器会自动：
+
+- 备份旧配置文件
+- 写入最小本地配置
+- 继续完成 token / gateway / dashboard 启动
 
 ## 如果卡在 npm 安装阶段
 

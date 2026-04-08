@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.2.0"
+RELEASE_VERSION="1.3.0"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
 
 INSTALL_METHOD=""
@@ -86,6 +86,18 @@ run_or_echo() {
     "$@"
 }
 
+get_default_openclaw_state_dir() {
+    if [[ -n "${OPENCLAW_STATE_DIR:-}" ]]; then
+        printf '%s\n' "$OPENCLAW_STATE_DIR"
+        return 0
+    fi
+    printf '%s\n' "$HOME/.openclaw"
+}
+
+new_bootstrap_token() {
+    node -e "const crypto=require('crypto'); process.stdout.write(crypto.randomBytes(24).toString('hex'))"
+}
+
 get_openclaw_config_path() {
     if command -v openclaw >/dev/null 2>&1; then
         local cfg_path
@@ -102,6 +114,90 @@ get_openclaw_config_path() {
     fi
 
     printf '%s\n' "$HOME/.openclaw/openclaw.json"
+}
+
+backup_openclaw_config() {
+    local config_path="$1"
+    if [[ -z "$config_path" || ! -f "$config_path" ]]; then
+        return 0
+    fi
+    local backup_path="${config_path}.installer-backup-$(date +%Y%m%d-%H%M%S).json"
+    cp "$config_path" "$backup_path"
+    printf '%s\n' "$backup_path"
+}
+
+write_minimal_openclaw_config() {
+    local config_path="$1"
+    local token="$2"
+    local config_dir
+    config_dir="$(dirname "$config_path")"
+    local state_dir
+    state_dir="$(get_default_openclaw_state_dir)"
+
+    mkdir -p "$config_dir"
+    mkdir -p "$state_dir"
+
+    node - <<'NODE' "$config_path" "$token"
+const fs = require('fs');
+const path = process.argv[2];
+const token = process.argv[3];
+const payload = {
+  gateway: {
+    mode: 'local',
+    bind: 'loopback',
+    auth: { mode: 'token', token },
+    trustedProxies: ['127.0.0.1', '::1']
+  },
+  meta: {
+    lastTouchedAt: new Date().toISOString(),
+    lastTouchedVersion: 'installer-bootstrap'
+  }
+};
+fs.writeFileSync(path, JSON.stringify(payload, null, 2));
+NODE
+}
+
+test_openclaw_config_healthy() {
+    if ! command -v openclaw >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local output
+    output="$(openclaw dashboard --no-open 2>&1 || true)"
+    if printf '%s' "$output" | grep -Eq 'Failed to read config|MODULE_NOT_FOUND|Cannot find module'; then
+        return 1
+    fi
+    return 0
+}
+
+ensure_openclaw_bootstrap_config() {
+    local config_path
+    config_path="$(get_openclaw_config_path)"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DryRun] 检查 OpenClaw 配置健康状态；若发现 4.8 配置或扩展冲突，将自动备份并写入最小本地配置"
+        return 0
+    fi
+
+    if [[ -f "$config_path" ]]; then
+        if test_openclaw_config_healthy; then
+            echo "OpenClaw 现有配置读取正常，继续使用当前配置。"
+            return 0
+        fi
+
+        local backup_path
+        backup_path="$(backup_openclaw_config "$config_path")"
+        if [[ -n "$backup_path" ]]; then
+            echo "检测到现有配置可能与当前 OpenClaw 版本不兼容，已自动备份到：$backup_path"
+        fi
+    else
+        echo "未发现可用的 OpenClaw 配置，将创建一份最小本地配置。"
+    fi
+
+    local bootstrap_token
+    bootstrap_token="$(new_bootstrap_token)"
+    write_minimal_openclaw_config "$config_path" "$bootstrap_token"
+    echo "已写入最小 OpenClaw 本地配置，用于完成首次启动。"
 }
 
 get_gateway_token_from_config() {
@@ -223,12 +319,14 @@ bootstrap_first_launch() {
     echo "正在执行 OpenClaw 首次启动自检..."
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DryRun] 检查 OpenClaw 配置健康状态；必要时备份旧配置并写入最小本地配置"
         echo "[DryRun] openclaw doctor --repair --generate-gateway-token --yes --non-interactive"
         echo "[DryRun] openclaw gateway install --force --token <generated-token>"
         echo "[DryRun] openclaw dashboard"
         return 0
     fi
 
+    ensure_openclaw_bootstrap_config
     openclaw doctor --repair --generate-gateway-token --yes --non-interactive || true
 
     local gateway_token
