@@ -26,12 +26,14 @@
 - 检查 Node.js 22+
 - 检查 npm
 - 检查并修正 npm 全局前缀到用户目录
+- 检查并修正 npm 缓存目录到用户目录
 - 检查并修正 npm / OpenClaw 所在目录到用户 PATH
 - 检查 Git
 - 缺 Git 时优先通过 `winget` 安装 Git for Windows
 - `winget` 失败时自动下载 Git for Windows 并静默安装
 - 默认 `npm` 模式直接执行官方推荐命令 `npm install -g openclaw@latest`
 - 支持一键卸载 OpenClaw，并可选择彻底清理状态/工作区/配置
+- 安装完成后自动生成 gateway token、安装 gateway 服务并打开控制台
 
 ## 安装
 
@@ -75,6 +77,12 @@ powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 
 ```powershell
 .\install-windows.ps1 -VerboseInstall
+```
+
+安装完成后不自动打开控制台：
+
+```powershell
+.\install-windows.ps1 -NoDashboard
 ```
 
 开发者源码模式：
@@ -144,6 +152,14 @@ openclaw gateway status
 ```powershell
 openclaw onboard --install-daemon
 ```
+
+## 现在安装完成后会额外自动做什么
+
+- 运行 `openclaw doctor --repair --generate-gateway-token --yes --non-interactive`
+- 确保 Gateway 服务已安装并刷新
+- 自动打开 `openclaw dashboard`
+
+这样做的目标是避免用户安装完成后，还要手工复制 token 注入网页。
 
 ## 如果卡在 npm 安装阶段
 

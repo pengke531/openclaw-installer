@@ -9,6 +9,13 @@
 - Fixed the Windows git installer argument ordering bug for official `install.ps1` delegation.
 - Rewrote the main Chinese documentation to include install and uninstall workflows.
 
+## v1.2.0 - 2026-04-08
+
+- Added first-launch bootstrap after install: gateway token generation, gateway service install/refresh, and dashboard auto-open.
+- Added Windows npm cache permission repair alongside prefix and PATH fixes.
+- Added `-NoDashboard` / `--no-dashboard` to opt out of auto-opening the Control UI.
+- Updated docs to describe the new post-install dashboard/token flow.
+
 ## v1.0.0 - 2026-04-06
 
 - Rebuilt the project as a thin wrapper around the official OpenClaw installers.

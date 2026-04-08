@@ -68,6 +68,7 @@ bash install.sh --uninstall --purge-data
 
 ```powershell
 .\install-windows.ps1 -NoOnboard
+.\install-windows.ps1 -NoDashboard
 .\install-windows.ps1 -DryRun -NoOnboard
 .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
 .\install-windows.ps1 -Uninstall -PurgeData
@@ -77,10 +78,22 @@ bash install.sh --uninstall --purge-data
 
 ```bash
 bash install.sh --no-onboard
+bash install.sh --no-dashboard
 bash install.sh --dry-run --no-onboard
 bash install.sh --install-method git --git-dir ~/openclaw
 bash install.sh --uninstall --purge-data
 ```
+
+## 安装完成后的自动动作
+
+默认安装结束后，脚本会继续完成一轮“首次启动 bootstrap”：
+
+- 修正 npm 权限相关目录
+- 生成 gateway token
+- 安装并刷新 gateway 服务
+- 自动打开 OpenClaw 控制台
+
+如果你只想完成安装、不自动打开控制台，可以使用 `-NoDashboard` 或 `--no-dashboard`。
 
 ## 安装后验证
 

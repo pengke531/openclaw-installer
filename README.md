@@ -1,4 +1,4 @@
-# OpenClaw Installer v1.1.0
+# OpenClaw Installer v1.2.0
 
 面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
@@ -19,7 +19,9 @@
 - `git` 源码安装
 - Windows 缺少 Node.js、npm、Git 时自动补环境
 - Windows 自动修正 npm 全局前缀与 PATH
+- Windows 自动修正 npm 缓存目录权限
 - Windows 卸载时优先调用官方 `openclaw uninstall`，CLI 不在时自动做手工清理兜底
+- 安装完成后自动生成 gateway token、安装 gateway 服务并打开 OpenClaw 控制台
 
 ## 当前不支持
 
@@ -97,6 +99,7 @@ curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/i
 
 ```bash
 bash install.sh --no-onboard
+bash install.sh --no-dashboard
 bash install.sh --install-method git --git-dir ~/openclaw
 bash install.sh --dry-run --no-onboard
 bash install.sh --uninstall --purge-data
@@ -106,10 +109,32 @@ bash install.sh --uninstall --purge-data
 
 ```powershell
 .\install-windows.ps1 -NoOnboard
+.\install-windows.ps1 -NoDashboard
 .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
 .\install-windows.ps1 -VerboseInstall
 .\install-windows.ps1 -DryRun -NoOnboard
 .\install-windows.ps1 -Uninstall -PurgeData
+```
+
+## 首装闭环
+
+默认安装完成后，脚本还会继续完成一轮首次启动 bootstrap：
+
+- 修正 npm 全局前缀、缓存目录与 PATH
+- 执行 `openclaw doctor --repair --generate-gateway-token --yes --non-interactive`
+- 安装并刷新 Gateway 服务
+- 自动打开 `openclaw dashboard`
+
+这样做的目标是让用户安装完就能直接进入 OpenClaw 控制台，不再手工处理 gateway token。
+
+如果你只想完成安装、不自动打开控制台：
+
+```powershell
+.\install-windows.ps1 -NoDashboard
+```
+
+```bash
+bash install.sh --no-dashboard
 ```
 
 ## 卸载说明

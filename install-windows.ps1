@@ -7,6 +7,7 @@ param(
     [switch]$Uninstall,
     [switch]$PurgeData,
     [switch]$NoOnboard,
+    [switch]$NoDashboard,
     [switch]$VerboseInstall,
     [switch]$DryRun,
     [switch]$Help
@@ -14,7 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.1.0"
+$Script:ReleaseVersion = "1.2.0"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
 
@@ -49,6 +50,7 @@ function Show-Usage {
         "  -Uninstall                一键卸载 OpenClaw CLI 与服务",
         "  -PurgeData                与 -Uninstall 搭配，额外删除状态/工作区/配置",
         "  -NoOnboard                安装后不进入 onboarding",
+        "  -NoDashboard              安装完成后不自动打开 OpenClaw 控制台",
         "  -VerboseInstall           包装层输出额外排查提示",
         "  -DryRun                   只打印计划动作",
         "  -Help                     显示帮助",
@@ -57,6 +59,7 @@ function Show-Usage {
         "  .\install-windows.ps1",
         "  .\install-windows.ps1 -Uninstall -PurgeData",
         "  .\install-windows.ps1 -NoOnboard",
+        "  .\install-windows.ps1 -NoDashboard",
         "  .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw",
         "  .\install-windows.ps1 -VerboseInstall",
         "  .\install-windows.ps1 -DryRun -NoOnboard"
@@ -101,6 +104,9 @@ function Get-RelaunchArguments {
     }
     if ($NoOnboard) {
         $argsList.Add("-NoOnboard")
+    }
+    if ($NoDashboard) {
+        $argsList.Add("-NoDashboard")
     }
     if ($VerboseInstall) {
         $argsList.Add("-VerboseInstall")
@@ -458,6 +464,19 @@ function Ensure-NpmReady {
     throw "npm 不可用。请确认 Node.js 安装完整，或重新打开 PowerShell 后重试。"
 }
 
+function Get-NpmUserConfigValue {
+    param(
+        [string]$Key
+    )
+
+    try {
+        $npmPath = Get-NpmCommandPath
+        return (& $npmPath config get $Key).Trim()
+    } catch {
+        return ""
+    }
+}
+
 function Test-DirectoryWritable {
     param([string]$PathToCheck)
 
@@ -518,6 +537,38 @@ function Ensure-NpmPrefixReady {
     if (-not $DryRun) {
         $finalPrefix = (& $npmPath config get prefix).Trim()
         Write-Host "npm 全局前缀：$finalPrefix" -ForegroundColor Green
+    }
+}
+
+function Ensure-NpmCacheReady {
+    $preferredCache = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "npm-cache" } else { Join-Path $env:USERPROFILE "AppData\\Local\\npm-cache" }
+    $npmPath = Get-NpmCommandPath
+    $currentCache = Get-NpmUserConfigValue -Key "cache"
+    $needsUserCache = $false
+
+    if ([string]::IsNullOrWhiteSpace($currentCache) -or $currentCache -eq "undefined" -or $currentCache -eq "null") {
+        $needsUserCache = $true
+    } elseif ($currentCache -match 'Program Files' -or $currentCache -match 'WindowsApps') {
+        $needsUserCache = $true
+    } elseif (-not (Test-DirectoryWritable -PathToCheck $currentCache)) {
+        $needsUserCache = $true
+    }
+
+    if ($needsUserCache) {
+        if ($DryRun) {
+            Write-Host "DryRun：npm 缓存目录将切换为用户目录：$preferredCache" -ForegroundColor Yellow
+        } else {
+            Write-Host "正在将 npm 缓存目录调整到用户目录：$preferredCache" -ForegroundColor Yellow
+            if (-not (Test-Path -LiteralPath $preferredCache)) {
+                New-Item -ItemType Directory -Force -Path $preferredCache | Out-Null
+            }
+            & $npmPath config set cache $preferredCache --location=user | Out-Null
+            $currentCache = Get-NpmUserConfigValue -Key "cache"
+        }
+    }
+
+    if (-not $DryRun) {
+        Write-Host "npm 缓存目录：$currentCache" -ForegroundColor Green
     }
 }
 
@@ -589,6 +640,7 @@ function Install-OpenClawViaNpm {
     Ensure-NodeReady
     Ensure-NpmReady
     Ensure-NpmPrefixReady
+    Ensure-NpmCacheReady
 
     $npmPath = Get-NpmCommandPath
 
@@ -599,6 +651,11 @@ function Install-OpenClawViaNpm {
 
     if ($DryRun) {
         Write-Host "[DryRun] npm install -g $packageSpec --loglevel $($Script:NpmInstallLogLevel)" -ForegroundColor Yellow
+        if (-not $NoDashboard) {
+            Ensure-OpenClawFirstLaunch
+        } else {
+            Write-Host "DryRun：已按要求跳过控制台自动打开。" -ForegroundColor Yellow
+        }
         return
     }
 
@@ -628,6 +685,93 @@ function Install-OpenClawViaNpm {
     } else {
         Write-Host "已按要求跳过 onboarding，稍后可手动执行：openclaw onboard --install-daemon" -ForegroundColor Yellow
     }
+
+    if (-not $NoDashboard) {
+        Ensure-OpenClawFirstLaunch
+    } else {
+        Write-Host "已按要求跳过控制台自动打开，稍后可手动执行：openclaw dashboard" -ForegroundColor Yellow
+    }
+}
+
+function Get-OpenClawConfigPath {
+    try {
+        $path = (& openclaw config file 2>$null).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($path)) {
+            return $path
+        }
+    } catch {}
+
+    if (-not [string]::IsNullOrWhiteSpace($env:OPENCLAW_CONFIG_PATH)) {
+        return $env:OPENCLAW_CONFIG_PATH
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        return (Join-Path $env:USERPROFILE ".openclaw\\openclaw.json")
+    }
+
+    return $null
+}
+
+function Get-OpenClawConfigObject {
+    $configPath = Get-OpenClawConfigPath
+    if ([string]::IsNullOrWhiteSpace($configPath) -or -not (Test-Path -LiteralPath $configPath)) {
+        return $null
+    }
+
+    try {
+        return (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 100)
+    } catch {
+        return $null
+    }
+}
+
+function Get-OpenClawGatewayTokenValue {
+    $cfg = Get-OpenClawConfigObject
+    if ($null -eq $cfg) {
+        return $null
+    }
+
+    $tokenValue = $cfg.gateway.auth.token
+    if ($tokenValue -is [string]) {
+        return $tokenValue
+    }
+
+    return $null
+}
+
+function Ensure-OpenClawFirstLaunch {
+    Write-Host "正在执行 OpenClaw 首次启动自检..." -ForegroundColor Cyan
+
+    if ($DryRun) {
+        Write-Host "[DryRun] openclaw doctor --repair --generate-gateway-token --yes --non-interactive" -ForegroundColor Yellow
+        Write-Host "[DryRun] openclaw gateway install --force --token <generated-token>" -ForegroundColor Yellow
+        Write-Host "[DryRun] openclaw dashboard" -ForegroundColor Yellow
+        return
+    }
+
+    try {
+        & openclaw doctor --repair --generate-gateway-token --yes --non-interactive
+    } catch {
+        Write-Host "doctor 自检未完全成功，继续尝试启动 gateway 与 dashboard。" -ForegroundColor Yellow
+    }
+
+    $gatewayToken = Get-OpenClawGatewayTokenValue
+    if ([string]::IsNullOrWhiteSpace($gatewayToken)) {
+        Write-Host "未能从本地配置读取 gateway token，将继续尝试用默认方式安装 gateway。" -ForegroundColor Yellow
+        & openclaw gateway install --force
+    } else {
+        & openclaw gateway install --force --token $gatewayToken
+    }
+
+    try {
+        $gatewayStatus = & openclaw gateway status --json 2>$null
+        if ($gatewayStatus) {
+            Write-Host "Gateway 状态已刷新。" -ForegroundColor Green
+        }
+    } catch {}
+
+    Write-Host "正在打开 OpenClaw 控制台..." -ForegroundColor Cyan
+    & openclaw dashboard
 }
 
 function Get-OpenClawStateDirectories {
@@ -949,6 +1093,11 @@ if ($InstallMethod -eq "git") {
         Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
     }
     Invoke-GitInstallViaOfficialInstaller -Arguments $processArgs
+    if (-not $NoDashboard) {
+        Ensure-OpenClawFirstLaunch
+    } else {
+        Write-Host "已按要求跳过控制台自动打开，稍后可手动执行：openclaw dashboard" -ForegroundColor Yellow
+    }
 } else {
     if ($VerboseInstall) {
         Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan

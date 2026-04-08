@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.1.0"
+RELEASE_VERSION="1.2.0"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
 
 INSTALL_METHOD=""
@@ -10,6 +10,7 @@ GIT_DIR=""
 UNINSTALL=0
 PURGE_DATA=0
 NO_ONBOARD=0
+NO_DASHBOARD=0
 DRY_RUN=0
 VERBOSE=0
 NO_PROMPT=0
@@ -36,6 +37,7 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   --purge-data                与 --uninstall 搭配，额外删除状态/工作区/配置
   --no-onboard                安装后不进入 onboarding
   --onboard                   安装后进入 onboarding
+  --no-dashboard              安装完成后不自动打开 OpenClaw 控制台
   --no-prompt                 非交互模式
   --dry-run                   只打印将执行的动作
   --verbose                   输出更详细日志
@@ -45,6 +47,7 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
 示例：
   bash install.sh
   bash install.sh --no-onboard
+  bash install.sh --no-dashboard
   bash install.sh --install-method git --git-dir ~/openclaw
   bash install.sh --uninstall --purge-data
   bash install.sh --dry-run --no-onboard
@@ -81,6 +84,34 @@ run_or_echo() {
         return 0
     fi
     "$@"
+}
+
+get_openclaw_config_path() {
+    if command -v openclaw >/dev/null 2>&1; then
+        local cfg_path
+        cfg_path="$(openclaw config file 2>/dev/null || true)"
+        if [[ -n "$cfg_path" ]]; then
+            printf '%s\n' "$cfg_path"
+            return 0
+        fi
+    fi
+
+    if [[ -n "${OPENCLAW_CONFIG_PATH:-}" ]]; then
+        printf '%s\n' "$OPENCLAW_CONFIG_PATH"
+        return 0
+    fi
+
+    printf '%s\n' "$HOME/.openclaw/openclaw.json"
+}
+
+get_gateway_token_from_config() {
+    local config_path
+    config_path="$(get_openclaw_config_path)"
+    if [[ ! -f "$config_path" ]]; then
+        return 0
+    fi
+
+    node -e "const fs=require('fs'); try { const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const token=(((data.gateway||{}).auth||{}).token); if (typeof token==='string') process.stdout.write(token); } catch {}" "$config_path"
 }
 
 collect_state_dirs() {
@@ -188,6 +219,37 @@ uninstall_openclaw() {
     echo "Node.js、Git、pnpm、bun 属于通用依赖，本脚本不会自动卸载它们。"
 }
 
+bootstrap_first_launch() {
+    echo "正在执行 OpenClaw 首次启动自检..."
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DryRun] openclaw doctor --repair --generate-gateway-token --yes --non-interactive"
+        echo "[DryRun] openclaw gateway install --force --token <generated-token>"
+        echo "[DryRun] openclaw dashboard"
+        return 0
+    fi
+
+    openclaw doctor --repair --generate-gateway-token --yes --non-interactive || true
+
+    local gateway_token
+    gateway_token="$(get_gateway_token_from_config)"
+    if [[ -n "$gateway_token" ]]; then
+        openclaw gateway install --force --token "$gateway_token" || true
+    else
+        echo "未能从本地配置读取 gateway token，将继续尝试默认 gateway 安装。"
+        openclaw gateway install --force || true
+    fi
+
+    openclaw gateway status --json >/dev/null 2>&1 || true
+
+    if [[ "$NO_DASHBOARD" -eq 1 ]]; then
+        echo "已按要求跳过控制台自动打开，稍后可手动执行：openclaw dashboard"
+    else
+        echo "正在打开 OpenClaw 控制台..."
+        openclaw dashboard || true
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --install-method|--method)
@@ -224,6 +286,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --onboard)
             NO_ONBOARD=0
+            shift
+            ;;
+        --no-dashboard)
+            NO_DASHBOARD=1
             shift
             ;;
         --no-prompt|--yes)
@@ -308,3 +374,5 @@ echo "即将执行：bash <official-installer> ${official_args[*]:-}"
 echo
 
 bash "$tmp_file" "${official_args[@]}"
+
+bootstrap_first_launch

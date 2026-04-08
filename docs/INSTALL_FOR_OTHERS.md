@@ -121,7 +121,9 @@ bash install.sh --install-method git --git-dir ~/openclaw
 
 ## 安装后要教对方做什么
 
-先验证：
+现在默认情况下，安装脚本会自动生成 gateway token、刷新 gateway 服务并打开控制台，所以用户通常不用再手工处理 token。
+
+你仍然可以让对方验证：
 
 ```bash
 openclaw --version
