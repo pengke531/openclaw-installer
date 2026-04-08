@@ -2,7 +2,7 @@
 param(
     [ValidateSet("npm", "git")]
     [string]$InstallMethod,
-    [string]$Tag = "latest",
+    [string]$Tag = "2026.4.2",
     [string]$GitDir,
     [switch]$Uninstall,
     [switch]$PurgeData,
@@ -15,7 +15,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.3.0"
+$Script:ReleaseVersion = "1.3.1"
+$Script:DefaultOpenClawVersion = "2026.4.2"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
 
@@ -45,7 +46,7 @@ function Show-Usage {
         "",
         "参数:",
         "  -InstallMethod [npm|git]  安装方式，默认 npm",
-        "  -Tag [tag|version]        版本，默认 latest",
+        "  -Tag [tag|version]        版本，默认 2026.4.2",
         "  -GitDir [path]            git 模式源码目录",
         "  -Uninstall                一键卸载 OpenClaw CLI 与服务",
         "  -PurgeData                与 -Uninstall 搭配，额外删除状态/工作区/配置",
@@ -317,7 +318,7 @@ function Write-DiagnosticHint {
     Write-Host "  npm -v" -ForegroundColor Cyan
     Write-Host "  npm ping" -ForegroundColor Cyan
     Write-Host "  npm view openclaw version" -ForegroundColor Cyan
-    Write-Host "  npm install -g openclaw@latest --loglevel verbose" -ForegroundColor Cyan
+    Write-Host "  npm install -g openclaw@$($Script:DefaultOpenClawVersion) --loglevel verbose" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -1188,7 +1189,7 @@ if ($PSBoundParameters.ContainsKey("InstallMethod")) {
     $invokeArgs += "-InstallMethod"
     $invokeArgs += $InstallMethod
 }
-if ($PSBoundParameters.ContainsKey("Tag") -and $Tag -ne "latest") {
+if ($PSBoundParameters.ContainsKey("Tag") -and $Tag -ne $Script:DefaultOpenClawVersion) {
     $invokeArgs += "-Tag"
     $invokeArgs += $Tag
 }

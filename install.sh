@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.3.0"
+RELEASE_VERSION="1.3.1"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
+DEFAULT_OPENCLAW_VERSION="2026.4.2"
 
 INSTALL_METHOD=""
-VERSION="latest"
+VERSION="$DEFAULT_OPENCLAW_VERSION"
 GIT_DIR=""
 UNINSTALL=0
 PURGE_DATA=0
@@ -31,7 +32,7 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   --install-method <npm|git>  安装方式，默认 npm
   --npm                       等价于 --install-method npm
   --git                       等价于 --install-method git
-  --version <tag|version>     版本，默认 latest
+  --version <tag|version>     版本，默认 2026.4.2
   --git-dir <path>            git 模式源码目录
   --uninstall                 一键卸载 OpenClaw CLI 与服务
   --purge-data                与 --uninstall 搭配，额外删除状态/工作区/配置
@@ -448,7 +449,7 @@ fi
 if [[ "$USE_BETA" -eq 1 ]]; then
     official_args+=(--beta)
 fi
-if [[ -n "$VERSION" && "$VERSION" != "latest" ]]; then
+if [[ -n "$VERSION" && "$VERSION" != "$DEFAULT_OPENCLAW_VERSION" ]]; then
     official_args+=(--version "$VERSION")
 fi
 if [[ -n "$GIT_DIR" ]]; then

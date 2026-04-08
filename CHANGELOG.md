@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.1 - 2026-04-09
+
+- Changed the installer default OpenClaw target from `latest` to the pinned stable version `2026.4.2`.
+- Updated help text, diagnostics, and docs so default one-click installs now consistently target 4.2.
+
 ## v1.3.0 - 2026-04-08
 
 - Added self-healing bootstrap for OpenClaw 2026.4.8 environments with broken or incompatible existing config.
