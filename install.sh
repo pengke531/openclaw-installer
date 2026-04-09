@@ -224,7 +224,9 @@ collect_state_dirs() {
         [[ -n "$dir" ]] && dirs+=("$dir")
     done < <(find "$HOME" -maxdepth 1 -type d -name '.openclaw-*' 2>/dev/null | sort)
 
-    printf '%s\n' "${dirs[@]}" | awk 'NF && !seen[$0]++'
+    if [[ ${#dirs[@]} -gt 0 ]]; then
+        printf '%s\n' "${dirs[@]}" | awk 'NF && !seen[$0]++'
+    fi
 }
 
 remove_path_if_exists() {
@@ -472,6 +474,10 @@ echo "已切换到官方安装路径：$OFFICIAL_INSTALL_URL"
 echo "即将执行：bash <official-installer> ${official_args[*]:-}"
 echo
 
-bash "$tmp_file" "${official_args[@]}"
+if [[ ${#official_args[@]} -gt 0 ]]; then
+    bash "$tmp_file" "${official_args[@]}"
+else
+    bash "$tmp_file"
+fi
 
 bootstrap_first_launch
