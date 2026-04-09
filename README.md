@@ -1,4 +1,4 @@
-# OpenClaw Installer v1.3.0
+# OpenClaw Installer v1.3.2
 
 面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
@@ -23,6 +23,7 @@
 - Windows 卸载时优先调用官方 `openclaw uninstall`，CLI 不在时自动做手工清理兜底
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开 OpenClaw 控制台
 - 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置继续部署
+- macOS 默认切换到官方 `install-cli.sh` 本地前缀安装，降低对 Homebrew 的依赖
 
 ## 当前不支持
 

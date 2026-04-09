@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.3.1"
-OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
+RELEASE_VERSION="1.3.2"
+UNAME_S="$(uname -s)"
+DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
+if [[ "$UNAME_S" == "Darwin" ]]; then
+    DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install-cli.sh"
+fi
+OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
 DEFAULT_OPENCLAW_VERSION="2026.4.2"
 
 INSTALL_METHOD=""
@@ -24,6 +29,7 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
 用途：
   这个脚本不再自己维护复杂安装逻辑，而是转调 OpenClaw 官方安装器，
   同时补充一键卸载入口，适合本地执行、发给别人执行，或作为 GitHub Raw 命令入口。
+  在 macOS 上默认转调 install-cli.sh，本地前缀安装更适合发给别人直接使用。
 
 用法：
   bash install.sh [选项]

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.2 - 2026-04-09
+
+- Switched the macOS wrapper path from official `install.sh` to official `install-cli.sh`.
+- Reduced macOS dependence on Homebrew for one-click installs on clean machines.
+- Kept Linux/WSL on the standard official `install.sh` path.
+
 ## v1.3.1 - 2026-04-09
 
 - Changed the installer default OpenClaw target from `latest` to the pinned stable version `2026.4.2`.

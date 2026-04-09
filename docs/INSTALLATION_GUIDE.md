@@ -10,6 +10,10 @@
 - Windows：`https://openclaw.ai/install.ps1`
 - 卸载：优先调用 `openclaw uninstall`
 
+补充：
+- macOS 默认改走 `https://openclaw.ai/install-cli.sh`
+- 这样可以把 OpenClaw 与 Node 安装到 `~/.openclaw` 前缀下，更适合“一键发给别人安装”
+
 ## 支持矩阵
 
 | 平台 | 在线安装 | 本地单文件 | 在线卸载 | 本地单文件卸载 | 完全离线 |
