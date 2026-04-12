@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.3 - 2026-04-12
+
+- Changed the installer default OpenClaw target from `2026.4.2` to `2026.4.11`.
+- Updated help text, diagnostics, and docs so default one-click installs now consistently target 4.11.
+
 ## v1.3.2 - 2026-04-09
 
 - Switched the macOS wrapper path from official `install.sh` to official `install-cli.sh`.
@@ -9,7 +14,7 @@
 ## v1.3.1 - 2026-04-09
 
 - Changed the installer default OpenClaw target from `latest` to the pinned stable version `2026.4.2`.
-- Updated help text, diagnostics, and docs so default one-click installs now consistently target 4.2.
+- Updated help text, diagnostics, and docs so default one-click installs consistently targeted 4.2 at that time.
 
 ## v1.3.0 - 2026-04-08
 

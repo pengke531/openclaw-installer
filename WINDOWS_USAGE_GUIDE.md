@@ -31,7 +31,7 @@
 - 检查 Git
 - 缺 Git 时优先通过 `winget` 安装 Git for Windows
 - `winget` 失败时自动下载 Git for Windows 并静默安装
-- 默认 `npm` 模式固定安装 OpenClaw `2026.4.2`
+- 默认 `npm` 模式固定安装 OpenClaw `2026.4.11`
 - 支持一键卸载 OpenClaw，并可选择彻底清理状态/工作区/配置
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开控制台
 - 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置
@@ -184,7 +184,7 @@ npm view openclaw version
 如果这些正常，再执行：
 
 ```powershell
-npm install -g openclaw@2026.4.2 --loglevel verbose
+npm install -g openclaw@2026.4.11 --loglevel verbose
 ```
 
 ## 常见判断
