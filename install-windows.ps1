@@ -2,7 +2,7 @@
 param(
     [ValidateSet("npm", "git")]
     [string]$InstallMethod,
-    [string]$Tag = "2026.4.11",
+    [string]$Tag = "latest",
     [string]$GitDir,
     [ValidateSet("auto", "official", "cn")]
     [string]$MirrorProfile = "auto",
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $Script:ReleaseVersion = "1.4.0"
-$Script:DefaultOpenClawVersion = "2026.4.11"
+$Script:DefaultOpenClawVersion = "latest"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NodeInstallerUrl = if ($env:OPENCLAW_NODEJS_MSI_URL) { $env:OPENCLAW_NODEJS_MSI_URL } else { "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi" }
 $Script:GitInstallerUrl = if ($env:OPENCLAW_GIT_INSTALLER_URL) { $env:OPENCLAW_GIT_INSTALLER_URL } else { "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" }
@@ -54,7 +54,7 @@ function Show-Usage {
         "",
         "参数:",
         "  -InstallMethod [npm|git]  安装方式，默认 npm",
-        "  -Tag [tag|version]        版本，默认 2026.4.11",
+        "  -Tag [tag|version]        版本，默认 latest",
         "  -GitDir [path]            git 模式源码目录",
         "  -MirrorProfile [auto|official|cn]",
         "                           网络模式，默认 auto；境内用户建议 cn",

@@ -8,7 +8,7 @@ if [[ "$UNAME_S" == "Darwin" ]]; then
     DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install-cli.sh"
 fi
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
-DEFAULT_OPENCLAW_VERSION="2026.4.11"
+DEFAULT_OPENCLAW_VERSION="latest"
 MIRROR_PROFILE="${OPENCLAW_MIRROR_PROFILE:-auto}"
 CUSTOM_NPM_REGISTRY="${OPENCLAW_NPM_REGISTRY:-}"
 OFFICIAL_INSTALL_MIRROR_URL="${OPENCLAW_OFFICIAL_INSTALL_MIRROR_URL:-}"
@@ -41,7 +41,7 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   --install-method <npm|git>  安装方式，默认 npm
   --npm                       等价于 --install-method npm
   --git                       等价于 --install-method git
-  --version <tag|version>     版本，默认 2026.4.11
+  --version <tag|version>     版本，默认 latest
   --git-dir <path>            git 模式源码目录
   --mirror-profile <auto|official|cn>
                               网络模式，默认 auto；境内用户建议 cn
