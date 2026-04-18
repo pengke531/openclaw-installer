@@ -60,18 +60,19 @@ stream_download() {
 execute_wrapper() {
     local tmp_file
     tmp_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-wrapper.XXXXXX.sh")"
-    trap 'rm -f "$tmp_file"' EXIT
 
     while IFS= read -r candidate; do
         [[ -n "$candidate" ]] || continue
         echo "尝试下载安装包装脚本：$candidate"
         if stream_download "$candidate" >"$tmp_file"; then
             bash "$tmp_file" "$@"
+            rm -f "$tmp_file"
             return 0
         fi
         echo "下载失败，准备尝试下一个入口。"
     done < <(build_wrapper_candidates)
 
+    rm -f "$tmp_file"
     echo "错误：无法下载安装包装脚本。"
     return 1
 }
