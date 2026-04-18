@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/i
 境内网络优先：
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install | bash -s -- --mirror-profile cn
+curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install.sh | bash -s -- --mirror-profile cn
 ```
 
 ## Linux / macOS / WSL 一键彻底卸载

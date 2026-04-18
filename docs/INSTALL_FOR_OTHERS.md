@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/i
 如果对方在中国大陆、GitHub Raw 不稳定，优先用：
 
 ```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install | bash -s -- --mirror-profile cn
+curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install.sh | bash -s -- --mirror-profile cn
 ```
 
 ## 远程在线彻底卸载

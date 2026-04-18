@@ -82,11 +82,8 @@ curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/i
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash -s -- --mirror-profile cn
 ```
 
-也可以用仓库入口脚本自动在 jsDelivr / GitHub Raw 间回退：
-
-```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install | bash -s -- --mirror-profile cn
-```
+目前更推荐直接使用 `install.sh` 本体，而不是仓库入口 `install`。
+原因：GitHub CDN 缓存刷新可能有延迟，直连 `install.sh` 更稳定。
 
 ## 卸载
 
