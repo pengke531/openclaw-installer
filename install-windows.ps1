@@ -4,6 +4,10 @@ param(
     [string]$InstallMethod,
     [string]$Tag = "2026.4.11",
     [string]$GitDir,
+    [ValidateSet("auto", "official", "cn")]
+    [string]$MirrorProfile = "auto",
+    [string]$NpmRegistry,
+    [string]$OfficialInstallerMirrorUrl,
     [switch]$Uninstall,
     [switch]$PurgeData,
     [switch]$NoOnboard,
@@ -15,10 +19,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.3.3"
+$Script:ReleaseVersion = "1.4.0"
 $Script:DefaultOpenClawVersion = "2026.4.11"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
+$Script:NodeInstallerUrl = if ($env:OPENCLAW_NODEJS_MSI_URL) { $env:OPENCLAW_NODEJS_MSI_URL } else { "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi" }
+$Script:GitInstallerUrl = if ($env:OPENCLAW_GIT_INSTALLER_URL) { $env:OPENCLAW_GIT_INSTALLER_URL } else { "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
+$Script:ResolvedMirrorProfile = $null
+$Script:EffectiveNpmRegistry = $null
 
 function Show-Banner {
     Write-Host ""
@@ -48,6 +56,11 @@ function Show-Usage {
         "  -InstallMethod [npm|git]  安装方式，默认 npm",
         "  -Tag [tag|version]        版本，默认 2026.4.11",
         "  -GitDir [path]            git 模式源码目录",
+        "  -MirrorProfile [auto|official|cn]",
+        "                           网络模式，默认 auto；境内用户建议 cn",
+        "  -NpmRegistry [url]       自定义 npm registry，优先级高于镜像模式",
+        "  -OfficialInstallerMirrorUrl [url]",
+        "                           官方安装器备用镜像地址",
         "  -Uninstall                一键卸载 OpenClaw CLI 与服务",
         "  -PurgeData                与 -Uninstall 搭配，额外删除状态/工作区/配置",
         "  -NoOnboard                安装后不进入 onboarding",
@@ -58,6 +71,7 @@ function Show-Usage {
         "",
         "示例:",
         "  .\install-windows.ps1",
+        "  .\install-windows.ps1 -MirrorProfile cn",
         "  .\install-windows.ps1 -Uninstall -PurgeData",
         "  .\install-windows.ps1 -NoOnboard",
         "  .\install-windows.ps1 -NoDashboard",
@@ -96,6 +110,18 @@ function Get-RelaunchArguments {
     if ($PSBoundParameters.ContainsKey("GitDir")) {
         $argsList.Add("-GitDir")
         $argsList.Add($GitDir)
+    }
+    if ($PSBoundParameters.ContainsKey("MirrorProfile")) {
+        $argsList.Add("-MirrorProfile")
+        $argsList.Add($MirrorProfile)
+    }
+    if ($PSBoundParameters.ContainsKey("NpmRegistry")) {
+        $argsList.Add("-NpmRegistry")
+        $argsList.Add($NpmRegistry)
+    }
+    if ($PSBoundParameters.ContainsKey("OfficialInstallerMirrorUrl")) {
+        $argsList.Add("-OfficialInstallerMirrorUrl")
+        $argsList.Add($OfficialInstallerMirrorUrl)
     }
     if ($Uninstall) {
         $argsList.Add("-Uninstall")
@@ -143,6 +169,82 @@ function Refresh-ProcessPath {
     $env:Path = "$machinePath;$userPath"
 }
 
+function Get-ResolvedMirrorProfile {
+    if ($MirrorProfile -ne "auto") {
+        return $MirrorProfile
+    }
+
+    try {
+        $culture = [System.Globalization.CultureInfo]::CurrentUICulture.Name
+        if ($culture -eq "zh-CN") {
+            return "cn"
+        }
+    } catch {}
+
+    try {
+        $timeZoneId = (Get-TimeZone).Id
+        if ($timeZoneId -eq "China Standard Time") {
+            return "cn"
+        }
+    } catch {}
+
+    if ($env:LANG -like "zh_CN*") {
+        return "cn"
+    }
+
+    return "official"
+}
+
+function Get-NpmRegistryCandidates {
+    if (-not [string]::IsNullOrWhiteSpace($NpmRegistry)) {
+        return @($NpmRegistry)
+    }
+
+    if ($Script:ResolvedMirrorProfile -eq "cn") {
+        return @(
+            "https://registry.npmmirror.com",
+            "https://registry.npmjs.org"
+        )
+    }
+
+    return @(
+        "https://registry.npmjs.org",
+        "https://registry.npmmirror.com"
+    )
+}
+
+function Get-InstallerUrlCandidates {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace($OfficialInstallerMirrorUrl)) {
+        $candidates.Add($OfficialInstallerMirrorUrl)
+    }
+    $candidates.Add($OfficialInstallUrl)
+    return $candidates | Select-Object -Unique
+}
+
+function Invoke-WebDownloadWithFallback {
+    param(
+        [string[]]$Urls,
+        [string]$OutFile
+    )
+
+    foreach ($url in $Urls) {
+        if ([string]::IsNullOrWhiteSpace($url)) {
+            continue
+        }
+
+        try {
+            Write-Host "尝试下载：$url" -ForegroundColor Cyan
+            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $OutFile -TimeoutSec 60
+            return $url
+        } catch {
+            Write-Host "下载失败，准备尝试下一个源：$url" -ForegroundColor Yellow
+        }
+    }
+
+    throw "所有安装器下载源都失败了。"
+}
+
 function Test-NodeAvailable {
     try {
         $nodeVersion = node --version
@@ -179,11 +281,10 @@ function Install-NodeWithWinget {
 }
 
 function Install-NodeWithDirectDownload {
-    $nodeUrl = "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi"
     $nodeInstaller = Join-Path $env:TEMP "openclaw-node-installer.msi"
 
     Write-Host "正在下载 Node.js 安装程序..." -ForegroundColor Yellow
-    Invoke-WebRequest -UseBasicParsing -Uri $nodeUrl -OutFile $nodeInstaller
+    Invoke-WebRequest -UseBasicParsing -Uri $Script:NodeInstallerUrl -OutFile $nodeInstaller
 
     Write-Host "正在静默安装 Node.js..." -ForegroundColor Yellow
     & msiexec.exe /i $nodeInstaller /qn /norestart
@@ -261,11 +362,10 @@ function Install-GitWithWinget {
 }
 
 function Install-GitWithDirectDownload {
-    $gitUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
     $gitInstaller = Join-Path $env:TEMP "openclaw-git-installer.exe"
 
     Write-Host "正在下载 Git for Windows 安装程序..." -ForegroundColor Yellow
-    Invoke-WebRequest -UseBasicParsing -Uri $gitUrl -OutFile $gitInstaller
+    Invoke-WebRequest -UseBasicParsing -Uri $Script:GitInstallerUrl -OutFile $gitInstaller
 
     Write-Host "正在静默安装 Git for Windows..." -ForegroundColor Yellow
     & $gitInstaller /VERYSILENT /NORESTART /NOCANCEL /SP-
@@ -310,15 +410,19 @@ function Ensure-GitReady {
 }
 
 function Write-DiagnosticHint {
+    $displayRegistry = if ([string]::IsNullOrWhiteSpace($Script:EffectiveNpmRegistry)) { "https://registry.npmjs.org" } else { $Script:EffectiveNpmRegistry }
     Write-Host ""
     Write-Host "[提示] 长时间没有新输出，当前很可能卡在 npm 全局安装阶段。" -ForegroundColor Yellow
     Write-Host "[提示] 这通常不是脚本本身卡死，而是目标设备在下载、解压、杀毒扫描或等待 npm registry/GitHub 响应。" -ForegroundColor Yellow
     Write-Host "[提示] 如果再等几分钟仍无变化，请在目标设备上手动执行以下排查命令：" -ForegroundColor Yellow
     Write-Host "  node -v" -ForegroundColor Cyan
     Write-Host "  npm -v" -ForegroundColor Cyan
+    if (-not [string]::IsNullOrWhiteSpace($Script:EffectiveNpmRegistry)) {
+        Write-Host "  npm config get registry    # 当前应为 $($Script:EffectiveNpmRegistry)" -ForegroundColor Cyan
+    }
     Write-Host "  npm ping" -ForegroundColor Cyan
     Write-Host "  npm view openclaw version" -ForegroundColor Cyan
-    Write-Host "  npm install -g openclaw@$($Script:DefaultOpenClawVersion) --loglevel verbose" -ForegroundColor Cyan
+    Write-Host "  npm install -g openclaw@$($Script:DefaultOpenClawVersion) --registry $displayRegistry --loglevel verbose" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -573,6 +677,43 @@ function Ensure-NpmCacheReady {
     }
 }
 
+function Set-NpmUserConfigValue {
+    param(
+        [string]$Key,
+        [string]$Value
+    )
+
+    $npmPath = Get-NpmCommandPath
+    & $npmPath config set $Key $Value --location=user | Out-Null
+}
+
+function Ensure-NpmRegistryReady {
+    param(
+        [string]$Registry
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Registry)) {
+        return
+    }
+
+    if ($DryRun) {
+        Write-Host "DryRun：npm registry 将设置为：$Registry" -ForegroundColor Yellow
+        if ($Script:ResolvedMirrorProfile -eq "cn") {
+            Write-Host "DryRun：npm disturl 将设置为：https://npmmirror.com/mirrors/node" -ForegroundColor Yellow
+        }
+        $Script:EffectiveNpmRegistry = $Registry
+        return
+    }
+
+    Set-NpmUserConfigValue -Key "registry" -Value $Registry
+    if ($Script:ResolvedMirrorProfile -eq "cn") {
+        Set-NpmUserConfigValue -Key "disturl" -Value "https://npmmirror.com/mirrors/node"
+    }
+
+    $Script:EffectiveNpmRegistry = $Registry
+    Write-Host "npm registry：$Registry" -ForegroundColor Green
+}
+
 function Test-OpenClawAvailable {
     try {
         $null = Get-Command openclaw -ErrorAction Stop
@@ -642,16 +783,21 @@ function Install-OpenClawViaNpm {
     Ensure-NpmReady
     Ensure-NpmPrefixReady
     Ensure-NpmCacheReady
+    $npmRegistries = Get-NpmRegistryCandidates
 
     $npmPath = Get-NpmCommandPath
 
     Write-Host "正在执行官方推荐安装命令：npm install -g $packageSpec" -ForegroundColor Cyan
+    Write-Host "网络模式：$($Script:ResolvedMirrorProfile)" -ForegroundColor Cyan
     if ($VerboseInstall) {
         Write-Host "已启用详细日志，npm 将使用 --loglevel verbose。" -ForegroundColor Cyan
     }
 
     if ($DryRun) {
-        Write-Host "[DryRun] npm install -g $packageSpec --loglevel $($Script:NpmInstallLogLevel)" -ForegroundColor Yellow
+        foreach ($registry in $npmRegistries) {
+            Ensure-NpmRegistryReady -Registry $registry
+            Write-Host "[DryRun] npm install -g $packageSpec --registry $registry --loglevel $($Script:NpmInstallLogLevel)" -ForegroundColor Yellow
+        }
         if (-not $NoDashboard) {
             Ensure-OpenClawFirstLaunch
         } else {
@@ -660,8 +806,30 @@ function Install-OpenClawViaNpm {
         return
     }
 
-    $commandText = "& '{0}' install -g '{1}' --loglevel {2} --fund=false --audit=false" -f $npmPath, $packageSpec, $Script:NpmInstallLogLevel
-    Invoke-ProcessWithMonitor -FilePath "powershell.exe" -Arguments @("-NoProfile", "-Command", $commandText) -InstallDetectionText "npm"
+    $installSucceeded = $false
+    $lastErrorMessage = $null
+    foreach ($registry in $npmRegistries) {
+        Ensure-NpmRegistryReady -Registry $registry
+        Write-Host "开始尝试 npm 安装源：$registry" -ForegroundColor Cyan
+        $commandText = "& '{0}' install -g '{1}' --registry '{2}' --loglevel {3} --fund=false --audit=false" -f $npmPath, $packageSpec, $registry, $Script:NpmInstallLogLevel
+        try {
+            Invoke-ProcessWithMonitor -FilePath "powershell.exe" -Arguments @("-NoProfile", "-Command", $commandText) -InstallDetectionText "npm"
+            $installSucceeded = $true
+            $Script:EffectiveNpmRegistry = $registry
+            break
+        } catch {
+            $lastErrorMessage = $_.Exception.Message
+            Write-Host "当前源安装失败：$registry" -ForegroundColor Yellow
+            if ($registry -ne $npmRegistries[-1]) {
+                Write-Host "准备自动切换下一个源重试..." -ForegroundColor Yellow
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+
+    if (-not $installSucceeded) {
+        throw "OpenClaw npm 安装失败。最后一次错误：$lastErrorMessage"
+    }
 
     if (-not (Ensure-OpenClawOnPath)) {
         Write-Host "安装已完成，但当前终端还找不到 openclaw 命令。" -ForegroundColor Yellow
@@ -1174,6 +1342,8 @@ if ($Help) {
     exit 0
 }
 
+$Script:ResolvedMirrorProfile = Get-ResolvedMirrorProfile
+
 Show-Banner
 Ensure-ElevatedIfNeeded
 
@@ -1213,9 +1383,10 @@ if ($InstallMethod -eq "git") {
         "-File"
         $tempFile
     ) + $invokeArgs
+    Write-Host "网络模式：$($Script:ResolvedMirrorProfile)" -ForegroundColor Cyan
     Write-Host "正在下载 OpenClaw 官方 Windows 安装器..." -ForegroundColor Cyan
-    Invoke-WebRequest -UseBasicParsing -Uri $OfficialInstallUrl -OutFile $tempFile
-    Write-Host "已切换到官方安装路径：$($OfficialInstallUrl)" -ForegroundColor Green
+    $downloadedFrom = Invoke-WebDownloadWithFallback -Urls (Get-InstallerUrlCandidates) -OutFile $tempFile
+    Write-Host "已切换到安装器路径：$downloadedFrom" -ForegroundColor Green
     Write-Host ("即将执行：powershell -File {0} {1}" -f $tempFile, ($invokeArgs -join " ")) -ForegroundColor Yellow
     Write-Host ""
     if ($VerboseInstall) {

@@ -1,4 +1,4 @@
-# OpenClaw Installer v1.3.2
+# OpenClaw Installer v1.4.0
 
 面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
@@ -20,6 +20,10 @@
 - Windows 缺少 Node.js、npm、Git 时自动补环境
 - Windows 自动修正 npm 全局前缀与 PATH
 - Windows 自动修正 npm 缓存目录权限
+- 智能网络模式：`auto / official / cn`
+- Windows npm 安装自动在官方源与 `npmmirror` 间切换重试
+- macOS 在 `cn` 模式下自动启用 Homebrew 清华镜像
+- Bash / PowerShell 下载官方安装器时自动重试，并支持备用镜像地址
 - Windows 卸载时优先调用官方 `openclaw uninstall`，CLI 不在时自动做手工清理兜底
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开 OpenClaw 控制台
 - 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置继续部署
@@ -31,7 +35,8 @@
 - 自带依赖包分发
 - 完全不联网完成安装
 
-如果目标机器无法访问 `openclaw.ai`、`nodejs.org`、`registry.npmjs.org`、`github.com`，这个项目不适合直接使用。
+如果目标机器无法访问 `openclaw.ai`、`nodejs.org`、`registry.npmjs.org`、`github.com`，默认路径仍可能失败。
+但现在可以通过镜像模式和自定义源参数明显提升境内成功率。
 
 ## 安装
 
@@ -62,6 +67,12 @@ bash install.sh
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
+```
+
+境内网络优先：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash -s -- --mirror-profile cn
 ```
 
 ## 卸载
@@ -113,10 +124,25 @@ bash install.sh --uninstall --purge-data
 .\install-windows.ps1 -NoOnboard
 .\install-windows.ps1 -NoDashboard
 .\install-windows.ps1 -InstallMethod git -GitDir C:\openclaw
+.\install-windows.ps1 -MirrorProfile cn
 .\install-windows.ps1 -VerboseInstall
 .\install-windows.ps1 -DryRun -NoOnboard
 .\install-windows.ps1 -Uninstall -PurgeData
 ```
+
+### 网络优化
+
+- `auto`：智能模式。检测到中国大陆环境时优先走国内优化配置，否则优先官方源。
+- `official`：尽量使用官方源。
+- `cn`：优先使用 `npmmirror`，并在 macOS 上自动启用 Homebrew 清华镜像。
+- `--npm-registry <url>` / `-NpmRegistry <url>`：强制指定 npm registry。
+- `--official-installer-mirror-url <url>` / `-OfficialInstallerMirrorUrl <url>`：为官方安装器追加备用镜像地址。
+- 环境变量也支持：
+  - `OPENCLAW_MIRROR_PROFILE`
+  - `OPENCLAW_NPM_REGISTRY`
+  - `OPENCLAW_OFFICIAL_INSTALL_MIRROR_URL`
+  - `OPENCLAW_NODEJS_MSI_URL`
+  - `OPENCLAW_GIT_INSTALLER_URL`
 
 ## 首装闭环
 
