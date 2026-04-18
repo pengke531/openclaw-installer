@@ -55,6 +55,13 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
+境内网络优先：
+
+```powershell
+Invoke-WebRequest -Uri "https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1" -MirrorProfile cn
+```
+
 ### Linux / macOS / WSL
 
 本地运行：
@@ -73,6 +80,12 @@ curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/i
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash -s -- --mirror-profile cn
+```
+
+也可以用仓库入口脚本自动在 jsDelivr / GitHub Raw 间回退：
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install | bash -s -- --mirror-profile cn
 ```
 
 ## 卸载

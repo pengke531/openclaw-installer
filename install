@@ -1,13 +1,81 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-https://openclaw.ai/install.sh}"
+REPO_SLUG="${OPENCLAW_INSTALLER_REPO:-pengke531/openclaw-installer}"
+REPO_REF="${OPENCLAW_INSTALLER_REF:-main}"
+MIRROR_PROFILE="${OPENCLAW_MIRROR_PROFILE:-auto}"
+WRAPPER_OVERRIDE_URL="${OPENCLAW_INSTALL_WRAPPER_URL:-}"
 
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --proto '=https' --tlsv1.2 "$OFFICIAL_INSTALL_URL" | bash -s -- "$@"
-elif command -v wget >/dev/null 2>&1; then
-    wget -qO- "$OFFICIAL_INSTALL_URL" | bash -s -- "$@"
-else
-    echo "错误：需要 curl 或 wget。"
-    exit 1
-fi
+normalize_mirror_profile() {
+    case "$MIRROR_PROFILE" in
+        auto)
+            if [[ "${TZ:-}" == "Asia/Shanghai" || "${LANG:-}" == zh_CN* || "${LC_ALL:-}" == zh_CN* ]]; then
+                printf '%s\n' "cn"
+            else
+                printf '%s\n' "official"
+            fi
+            ;;
+        official|cn)
+            printf '%s\n' "$MIRROR_PROFILE"
+            ;;
+        *)
+            printf '%s\n' "official"
+            ;;
+    esac
+}
+
+build_wrapper_candidates() {
+    local candidates=()
+    if [[ -n "$WRAPPER_OVERRIDE_URL" ]]; then
+        candidates+=("$WRAPPER_OVERRIDE_URL")
+    fi
+
+    local raw_url="https://raw.githubusercontent.com/${REPO_SLUG}/${REPO_REF}/install.sh"
+    local jsdelivr_url="https://cdn.jsdelivr.net/gh/${REPO_SLUG}@${REPO_REF}/install.sh"
+
+    if [[ "$RESOLVED_MIRROR_PROFILE" == "cn" ]]; then
+        candidates+=("$jsdelivr_url" "$raw_url")
+    else
+        candidates+=("$raw_url" "$jsdelivr_url")
+    fi
+
+    printf '%s\n' "${candidates[@]}"
+}
+
+stream_download() {
+    local url="$1"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --proto '=https' --tlsv1.2 \
+            --connect-timeout 15 --max-time 600 \
+            --retry 3 --retry-delay 2 --retry-all-errors \
+            "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- --timeout=15 --tries=4 "$url"
+    else
+        echo "错误：需要 curl 或 wget。"
+        exit 1
+    fi
+}
+
+execute_wrapper() {
+    local tmp_file
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-wrapper.XXXXXX.sh")"
+    trap 'rm -f "$tmp_file"' EXIT
+
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        echo "尝试下载安装包装脚本：$candidate"
+        if stream_download "$candidate" >"$tmp_file"; then
+            bash "$tmp_file" "$@"
+            return 0
+        fi
+        echo "下载失败，准备尝试下一个入口。"
+    done < <(build_wrapper_candidates)
+
+    echo "错误：无法下载安装包装脚本。"
+    return 1
+}
+
+RESOLVED_MIRROR_PROFILE="$(normalize_mirror_profile)"
+
+execute_wrapper "$@"

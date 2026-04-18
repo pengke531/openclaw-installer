@@ -28,12 +28,25 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
+如果对方在中国大陆、GitHub Raw 不稳定，优先用：
+
+```powershell
+Invoke-WebRequest -Uri "https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1" -MirrorProfile cn
+```
+
 ### Linux / macOS / WSL
 
 让对方打开终端执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
+```
+
+如果对方在中国大陆、GitHub Raw 不稳定，优先用：
+
+```bash
+curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install | bash -s -- --mirror-profile cn
 ```
 
 ## 远程在线彻底卸载
@@ -91,7 +104,7 @@ bash install.sh --uninstall --purge-data
 
 - 不需要：
   - 你使用在线命令
-  - 目标电脑可以直接访问 GitHub Raw 和 OpenClaw 官方地址
+  - 目标电脑可以访问 jsDelivr / GitHub Raw 和 OpenClaw 官方地址
 - 需要：
   - 你打算发一个本地脚本给对方保存后再运行
 - 一般不建议拷整个仓库：
