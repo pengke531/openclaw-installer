@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.0"
+RELEASE_VERSION="1.4.1"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
-if [[ "$UNAME_S" == "Darwin" ]]; then
-    DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install-cli.sh"
-fi
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
 DEFAULT_OPENCLAW_VERSION="latest"
-MIRROR_PROFILE="${OPENCLAW_MIRROR_PROFILE:-auto}"
-CUSTOM_NPM_REGISTRY="${OPENCLAW_NPM_REGISTRY:-}"
-OFFICIAL_INSTALL_MIRROR_URL="${OPENCLAW_OFFICIAL_INSTALL_MIRROR_URL:-}"
 
 INSTALL_METHOD=""
 VERSION="$DEFAULT_OPENCLAW_VERSION"
@@ -32,7 +26,6 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
 用途：
   这个脚本不再自己维护复杂安装逻辑，而是转调 OpenClaw 官方安装器，
   同时补充一键卸载入口，适合本地执行、发给别人执行，或作为 GitHub Raw 命令入口。
-  在 macOS 上默认转调 install-cli.sh，本地前缀安装更适合发给别人直接使用。
 
 用法：
   bash install.sh [选项]
@@ -43,13 +36,8 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   --git                       等价于 --install-method git
   --version <tag|version>     版本，默认 latest
   --git-dir <path>            git 模式源码目录
-  --mirror-profile <auto|official|cn>
-                              网络模式，默认 auto；境内用户建议 cn
-  --npm-registry <url>        自定义 npm registry，优先级高于镜像模式
   --official-installer-url <url>
                               覆盖官方安装器地址
-  --official-installer-mirror-url <url>
-                              官方安装器备用镜像地址
   --uninstall                 一键卸载 OpenClaw CLI 与服务
   --purge-data                与 --uninstall 搭配，额外删除状态/工作区/配置
   --no-onboard                安装后不进入 onboarding
@@ -65,7 +53,6 @@ OpenClaw 安装包装脚本（Linux / macOS / WSL）
   bash install.sh
   bash install.sh --no-onboard
   bash install.sh --no-dashboard
-  bash install.sh --mirror-profile cn
   bash install.sh --install-method git --git-dir ~/openclaw
   bash install.sh --uninstall --purge-data
   bash install.sh --dry-run --no-onboard
@@ -80,66 +67,6 @@ OpenClaw 一键安装工具 v${RELEASE_VERSION}
 ============================================================
 
 EOF
-}
-
-normalize_mirror_profile() {
-    case "$MIRROR_PROFILE" in
-        auto)
-            if [[ "${TZ:-}" == "Asia/Shanghai" || "${LANG:-}" == zh_CN* || "${LC_ALL:-}" == zh_CN* ]]; then
-                printf '%s\n' "cn"
-            else
-                printf '%s\n' "official"
-            fi
-            ;;
-        official|cn)
-            printf '%s\n' "$MIRROR_PROFILE"
-            ;;
-        *)
-            echo "错误：--mirror-profile 只支持 auto、official、cn"
-            exit 2
-            ;;
-    esac
-}
-
-get_npm_registry_candidates() {
-    if [[ -n "$CUSTOM_NPM_REGISTRY" ]]; then
-        printf '%s\n' "$CUSTOM_NPM_REGISTRY"
-        return 0
-    fi
-
-    case "$RESOLVED_MIRROR_PROFILE" in
-        cn)
-            printf '%s\n' "https://registry.npmmirror.com"
-            printf '%s\n' "https://registry.npmjs.org"
-            ;;
-        *)
-            printf '%s\n' "https://registry.npmjs.org"
-            printf '%s\n' "https://registry.npmmirror.com"
-            ;;
-    esac
-}
-
-apply_network_profile() {
-    case "$RESOLVED_MIRROR_PROFILE" in
-        cn)
-            export NPM_CONFIG_REGISTRY="${CUSTOM_NPM_REGISTRY:-https://registry.npmmirror.com}"
-            export npm_config_registry="$NPM_CONFIG_REGISTRY"
-            export npm_config_disturl="https://npmmirror.com/mirrors/node"
-            if [[ "$UNAME_S" == "Darwin" ]]; then
-                export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-                export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-                export HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-                export HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-                export HOMEBREW_INSTALL_FROM_API=1
-            fi
-            ;;
-        *)
-            if [[ -n "$CUSTOM_NPM_REGISTRY" ]]; then
-                export NPM_CONFIG_REGISTRY="$CUSTOM_NPM_REGISTRY"
-                export npm_config_registry="$CUSTOM_NPM_REGISTRY"
-            fi
-            ;;
-    esac
 }
 
 download_once() {
@@ -181,11 +108,27 @@ download_to() {
 
 build_official_installer_candidates() {
     local candidates=()
-    if [[ -n "$OFFICIAL_INSTALL_MIRROR_URL" ]]; then
-        candidates+=("$OFFICIAL_INSTALL_MIRROR_URL")
-    fi
     candidates+=("$OFFICIAL_INSTALL_URL")
     printf '%s\n' "${candidates[@]}"
+}
+
+ensure_macos_prereqs() {
+    if [[ "$UNAME_S" != "Darwin" ]]; then
+        return 0
+    fi
+
+    if xcode-select -p >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "检测到 macOS 尚未安装 Xcode Command Line Tools，正在尝试触发系统安装..."
+    echo "如果系统弹出安装窗口，请点击安装并等待完成，然后脚本会继续调用 OpenClaw 官方安装器。"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "[DryRun] xcode-select --install"
+        return 0
+    fi
+
+    xcode-select --install >/dev/null 2>&1 || true
 }
 
 run_or_echo() {
@@ -482,20 +425,8 @@ while [[ $# -gt 0 ]]; do
             GIT_DIR="${2:-}"
             shift 2
             ;;
-        --mirror-profile)
-            MIRROR_PROFILE="${2:-}"
-            shift 2
-            ;;
-        --npm-registry)
-            CUSTOM_NPM_REGISTRY="${2:-}"
-            shift 2
-            ;;
         --official-installer-url)
             OFFICIAL_INSTALL_URL="${2:-}"
-            shift 2
-            ;;
-        --official-installer-mirror-url)
-            OFFICIAL_INSTALL_MIRROR_URL="${2:-}"
             shift 2
             ;;
         --uninstall)
@@ -553,9 +484,6 @@ if [[ -n "$INSTALL_METHOD" && "$INSTALL_METHOD" != "npm" && "$INSTALL_METHOD" !=
     exit 2
 fi
 
-RESOLVED_MIRROR_PROFILE="$(normalize_mirror_profile)"
-apply_network_profile
-
 print_banner
 
 if [[ "$UNINSTALL" -eq 1 ]]; then
@@ -569,13 +497,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "网络模式：$RESOLVED_MIRROR_PROFILE"
-if [[ -n "${NPM_CONFIG_REGISTRY:-}" ]]; then
-    echo "npm registry：$NPM_CONFIG_REGISTRY"
-fi
-if [[ "$UNAME_S" == "Darwin" && "$RESOLVED_MIRROR_PROFILE" == "cn" ]]; then
-    echo "macOS 已启用 Homebrew 清华镜像。"
-fi
+ensure_macos_prereqs
 
 echo "正在下载 OpenClaw 官方安装器..."
 installer_candidates=()

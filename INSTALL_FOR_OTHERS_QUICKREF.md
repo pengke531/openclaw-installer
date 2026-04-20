@@ -10,13 +10,6 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
-境内网络优先：
-
-```powershell
-Invoke-WebRequest -Uri "https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install-windows.ps1" -OutFile "$env:TEMP\openclaw-install.ps1"
-powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1" -MirrorProfile cn
-```
-
 ## Windows 一键彻底卸载
 
 ```powershell
@@ -28,12 +21,6 @@ powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-uninstall.ps1" -Uni
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
-```
-
-境内网络优先：
-
-```bash
-curl -fsSL https://cdn.jsdelivr.net/gh/pengke531/openclaw-installer@main/install.sh | bash -s -- --mirror-profile cn
 ```
 
 ## Linux / macOS / WSL 一键彻底卸载

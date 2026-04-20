@@ -4,10 +4,6 @@ param(
     [string]$InstallMethod,
     [string]$Tag = "latest",
     [string]$GitDir,
-    [ValidateSet("auto", "official", "cn")]
-    [string]$MirrorProfile = "auto",
-    [string]$NpmRegistry,
-    [string]$OfficialInstallerMirrorUrl,
     [switch]$Uninstall,
     [switch]$PurgeData,
     [switch]$NoOnboard,
@@ -19,13 +15,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.4.0"
+$Script:ReleaseVersion = "1.4.1"
 $Script:DefaultOpenClawVersion = "latest"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NodeInstallerUrl = if ($env:OPENCLAW_NODEJS_MSI_URL) { $env:OPENCLAW_NODEJS_MSI_URL } else { "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi" }
 $Script:GitInstallerUrl = if ($env:OPENCLAW_GIT_INSTALLER_URL) { $env:OPENCLAW_GIT_INSTALLER_URL } else { "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" }
 $Script:NpmInstallLogLevel = if ($VerboseInstall) { "verbose" } else { "notice" }
-$Script:ResolvedMirrorProfile = $null
 $Script:EffectiveNpmRegistry = $null
 
 function Show-Banner {
@@ -46,8 +41,8 @@ function Show-Usage {
         "微信：kerp531",
         "",
         "用途:",
-        "  Windows 的 npm 安装模式会直接执行官方文档推荐命令，",
-        "  并在需要时调用官方 PowerShell 安装器处理 git 源码安装模式。",
+        "  默认直接转调 OpenClaw 官方 PowerShell 安装器，",
+        "  减少自定义安装分支，优先保证稳定性。",
         "",
         "用法:",
         "  powershell -ExecutionPolicy Bypass -File .\install-windows.ps1 [参数]",
@@ -56,11 +51,6 @@ function Show-Usage {
         "  -InstallMethod [npm|git]  安装方式，默认 npm",
         "  -Tag [tag|version]        版本，默认 latest",
         "  -GitDir [path]            git 模式源码目录",
-        "  -MirrorProfile [auto|official|cn]",
-        "                           网络模式，默认 auto；境内用户建议 cn",
-        "  -NpmRegistry [url]       自定义 npm registry，优先级高于镜像模式",
-        "  -OfficialInstallerMirrorUrl [url]",
-        "                           官方安装器备用镜像地址",
         "  -Uninstall                一键卸载 OpenClaw CLI 与服务",
         "  -PurgeData                与 -Uninstall 搭配，额外删除状态/工作区/配置",
         "  -NoOnboard                安装后不进入 onboarding",
@@ -71,7 +61,6 @@ function Show-Usage {
         "",
         "示例:",
         "  .\install-windows.ps1",
-        "  .\install-windows.ps1 -MirrorProfile cn",
         "  .\install-windows.ps1 -Uninstall -PurgeData",
         "  .\install-windows.ps1 -NoOnboard",
         "  .\install-windows.ps1 -NoDashboard",
@@ -110,18 +99,6 @@ function Get-RelaunchArguments {
     if ($PSBoundParameters.ContainsKey("GitDir")) {
         $argsList.Add("-GitDir")
         $argsList.Add($GitDir)
-    }
-    if ($PSBoundParameters.ContainsKey("MirrorProfile")) {
-        $argsList.Add("-MirrorProfile")
-        $argsList.Add($MirrorProfile)
-    }
-    if ($PSBoundParameters.ContainsKey("NpmRegistry")) {
-        $argsList.Add("-NpmRegistry")
-        $argsList.Add($NpmRegistry)
-    }
-    if ($PSBoundParameters.ContainsKey("OfficialInstallerMirrorUrl")) {
-        $argsList.Add("-OfficialInstallerMirrorUrl")
-        $argsList.Add($OfficialInstallerMirrorUrl)
     }
     if ($Uninstall) {
         $argsList.Add("-Uninstall")
@@ -214,12 +191,7 @@ function Get-NpmRegistryCandidates {
 }
 
 function Get-InstallerUrlCandidates {
-    $candidates = New-Object System.Collections.Generic.List[string]
-    if (-not [string]::IsNullOrWhiteSpace($OfficialInstallerMirrorUrl)) {
-        $candidates.Add($OfficialInstallerMirrorUrl)
-    }
-    $candidates.Add($OfficialInstallUrl)
-    return $candidates | Select-Object -Unique
+    return @($OfficialInstallUrl)
 }
 
 function Invoke-WebDownloadWithFallback {
@@ -1332,7 +1304,7 @@ function Invoke-GitInstallViaOfficialInstaller {
         [string[]]$Arguments
     )
 
-    Write-Host "git 模式仍交给 OpenClaw 官方安装器处理..." -ForegroundColor Cyan
+    Write-Host "正在调用 OpenClaw 官方安装器..." -ForegroundColor Cyan
     Invoke-ProcessWithMonitor -FilePath "powershell.exe" -Arguments $Arguments -InstallDetectionText "Installing OpenClaw"
 }
 
@@ -1342,8 +1314,6 @@ if ($Help) {
     exit 0
 }
 
-$Script:ResolvedMirrorProfile = Get-ResolvedMirrorProfile
-
 Show-Banner
 Ensure-ElevatedIfNeeded
 
@@ -1351,8 +1321,6 @@ if ($Uninstall) {
     Uninstall-OpenClaw
     exit 0
 }
-
-Ensure-GitReady
 
 $invokeArgs = @()
 if ($PSBoundParameters.ContainsKey("InstallMethod")) {
@@ -1374,33 +1342,28 @@ if ($DryRun) {
     $invokeArgs += "-DryRun"
 }
 
-if ($InstallMethod -eq "git") {
-    $tempFile = Join-Path $env:TEMP "openclaw-official-install.ps1"
-    $processArgs = @(
-        "-NoProfile"
-        "-ExecutionPolicy"
-        "Bypass"
-        "-File"
-        $tempFile
-    ) + $invokeArgs
-    Write-Host "网络模式：$($Script:ResolvedMirrorProfile)" -ForegroundColor Cyan
-    Write-Host "正在下载 OpenClaw 官方 Windows 安装器..." -ForegroundColor Cyan
-    $downloadedFrom = Invoke-WebDownloadWithFallback -Urls (Get-InstallerUrlCandidates) -OutFile $tempFile
-    Write-Host "已切换到安装器路径：$downloadedFrom" -ForegroundColor Green
-    Write-Host ("即将执行：powershell -File {0} {1}" -f $tempFile, ($invokeArgs -join " ")) -ForegroundColor Yellow
-    Write-Host ""
-    if ($VerboseInstall) {
-        Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
-    }
-    Invoke-GitInstallViaOfficialInstaller -Arguments $processArgs
-    if (-not $NoDashboard) {
-        Ensure-OpenClawFirstLaunch
-    } else {
-        Write-Host "已按要求跳过控制台自动打开，稍后可手动执行：openclaw dashboard" -ForegroundColor Yellow
-    }
+$tempFile = Join-Path $env:TEMP "openclaw-official-install.ps1"
+$processArgs = @(
+    "-NoProfile"
+    "-ExecutionPolicy"
+    "Bypass"
+    "-File"
+    $tempFile
+) + $invokeArgs
+
+Write-Host "正在下载 OpenClaw 官方 Windows 安装器..." -ForegroundColor Cyan
+$downloadedFrom = Invoke-WebDownloadWithFallback -Urls (Get-InstallerUrlCandidates) -OutFile $tempFile
+Write-Host "已切换到安装器路径：$downloadedFrom" -ForegroundColor Green
+Write-Host ("即将执行：powershell -File {0} {1}" -f $tempFile, ($invokeArgs -join " ")) -ForegroundColor Yellow
+Write-Host ""
+if ($VerboseInstall) {
+    Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
+}
+
+Invoke-GitInstallViaOfficialInstaller -Arguments $processArgs
+
+if (-not $NoDashboard) {
+    Ensure-OpenClawFirstLaunch
 } else {
-    if ($VerboseInstall) {
-        Write-Host "已启用增强诊断模式：如果安装长时间无输出，会自动显示排查提示。" -ForegroundColor Cyan
-    }
-    Install-OpenClawViaNpm
+    Write-Host "已按要求跳过控制台自动打开，稍后可手动执行：openclaw dashboard" -ForegroundColor Yellow
 }

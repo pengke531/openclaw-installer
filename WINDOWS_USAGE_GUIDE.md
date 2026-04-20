@@ -28,10 +28,8 @@
 - 检查并修正 npm 全局前缀到用户目录
 - 检查并修正 npm 缓存目录到用户目录
 - 检查并修正 npm / OpenClaw 所在目录到用户 PATH
-- 检查 Git
-- 缺 Git 时优先通过 `winget` 安装 Git for Windows
-- `winget` 失败时自动下载 Git for Windows 并静默安装
-- 默认 `npm` 模式安装 OpenClaw `latest`
+- 默认直接调用 OpenClaw 官方 PowerShell 安装器
+- 保留官方 `npm` / `git` 两种安装模式入口
 - 支持一键卸载 OpenClaw，并可选择彻底清理状态/工作区/配置
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开控制台
 - 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置
@@ -168,23 +166,17 @@ openclaw onboard --install-daemon
 - 写入最小本地配置
 - 继续完成 token / gateway / dashboard 启动
 
-## 如果卡在 npm 安装阶段
+## 如果安装器长时间没有新输出
 
-先再等几分钟，因为这一步可能仍在下载 npm 包、解压依赖，或被杀毒软件扫描。
+先再等几分钟，因为官方安装器可能仍在下载依赖、解压 npm 包，或被杀毒软件扫描。
 
 如果长时间没有变化，先在目标设备执行：
 
 ```powershell
 node -v
 npm -v
-npm ping
-npm view openclaw version
-```
-
-如果这些正常，再执行：
-
-```powershell
-npm install -g openclaw@latest --loglevel verbose
+git --version
+openclaw --version
 ```
 
 ## 常见判断

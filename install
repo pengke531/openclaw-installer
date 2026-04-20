@@ -3,26 +3,7 @@ set -euo pipefail
 
 REPO_SLUG="${OPENCLAW_INSTALLER_REPO:-pengke531/openclaw-installer}"
 REPO_REF="${OPENCLAW_INSTALLER_REF:-main}"
-MIRROR_PROFILE="${OPENCLAW_MIRROR_PROFILE:-auto}"
 WRAPPER_OVERRIDE_URL="${OPENCLAW_INSTALL_WRAPPER_URL:-}"
-
-normalize_mirror_profile() {
-    case "$MIRROR_PROFILE" in
-        auto)
-            if [[ "${TZ:-}" == "Asia/Shanghai" || "${LANG:-}" == zh_CN* || "${LC_ALL:-}" == zh_CN* ]]; then
-                printf '%s\n' "cn"
-            else
-                printf '%s\n' "official"
-            fi
-            ;;
-        official|cn)
-            printf '%s\n' "$MIRROR_PROFILE"
-            ;;
-        *)
-            printf '%s\n' "official"
-            ;;
-    esac
-}
 
 build_wrapper_candidates() {
     local candidates=()
@@ -31,13 +12,7 @@ build_wrapper_candidates() {
     fi
 
     local raw_url="https://raw.githubusercontent.com/${REPO_SLUG}/${REPO_REF}/install.sh"
-    local jsdelivr_url="https://cdn.jsdelivr.net/gh/${REPO_SLUG}@${REPO_REF}/install.sh"
-
-    if [[ "$RESOLVED_MIRROR_PROFILE" == "cn" ]]; then
-        candidates+=("$jsdelivr_url" "$raw_url")
-    else
-        candidates+=("$raw_url" "$jsdelivr_url")
-    fi
+    candidates+=("$raw_url")
 
     printf '%s\n' "${candidates[@]}"
 }
@@ -76,7 +51,5 @@ execute_wrapper() {
     echo "错误：无法下载安装包装脚本。"
     return 1
 }
-
-RESOLVED_MIRROR_PROFILE="$(normalize_mirror_profile)"
 
 execute_wrapper "$@"
