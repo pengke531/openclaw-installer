@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.4.1"
+$Script:ReleaseVersion = "1.4.2"
 $Script:DefaultOpenClawVersion = "latest"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NodeInstallerUrl = if ($env:OPENCLAW_NODEJS_MSI_URL) { $env:OPENCLAW_NODEJS_MSI_URL } else { "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi" }
@@ -398,6 +398,46 @@ function Write-DiagnosticHint {
     Write-Host ""
 }
 
+function Get-InstallerLogEncoding {
+    try {
+        $codePage = [System.Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage
+        return [System.Text.Encoding]::GetEncoding($codePage)
+    } catch {
+        return [System.Text.Encoding]::UTF8
+    }
+}
+
+function Read-InstallerLogLines {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return @()
+    }
+
+    $encoding = Get-InstallerLogEncoding
+    $fileStream = $null
+    $reader = $null
+    try {
+        $fileStream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $reader = New-Object System.IO.StreamReader($fileStream, $encoding, $true)
+        $content = $reader.ReadToEnd()
+        if ([string]::IsNullOrEmpty($content)) {
+            return @()
+        }
+        return ($content -split "`r?`n")
+    } catch {
+        return @()
+    } finally {
+        if ($reader) {
+            $reader.Dispose()
+        } elseif ($fileStream) {
+            $fileStream.Dispose()
+        }
+    }
+}
+
 function Invoke-ProcessWithMonitor {
     param(
         [string]$FilePath,
@@ -420,7 +460,7 @@ function Invoke-ProcessWithMonitor {
             Start-Sleep -Seconds 3
 
             if (Test-Path $stdoutFile) {
-                $stdoutLines = Get-Content $stdoutFile -ErrorAction SilentlyContinue
+                $stdoutLines = Read-InstallerLogLines -Path $stdoutFile
                 if ($stdoutLines.Count -gt $stdoutLineCount) {
                     $newStdout = $stdoutLines[$stdoutLineCount..($stdoutLines.Count - 1)]
                     foreach ($line in $newStdout) {
@@ -435,7 +475,7 @@ function Invoke-ProcessWithMonitor {
             }
 
             if (Test-Path $stderrFile) {
-                $stderrLines = Get-Content $stderrFile -ErrorAction SilentlyContinue
+                $stderrLines = Read-InstallerLogLines -Path $stderrFile
                 if ($stderrLines.Count -gt $stderrLineCount) {
                     $newStderr = $stderrLines[$stderrLineCount..($stderrLines.Count - 1)]
                     foreach ($line in $newStderr) {
@@ -459,14 +499,14 @@ function Invoke-ProcessWithMonitor {
         }
 
         if (Test-Path $stdoutFile) {
-            $stdoutLines = Get-Content $stdoutFile -ErrorAction SilentlyContinue
+            $stdoutLines = Read-InstallerLogLines -Path $stdoutFile
             if ($stdoutLines.Count -gt $stdoutLineCount) {
                 $stdoutLines[$stdoutLineCount..($stdoutLines.Count - 1)] | ForEach-Object { Write-Host $_ }
             }
         }
 
         if (Test-Path $stderrFile) {
-            $stderrLines = Get-Content $stderrFile -ErrorAction SilentlyContinue
+            $stderrLines = Read-InstallerLogLines -Path $stderrFile
             if ($stderrLines.Count -gt $stderrLineCount) {
                 $stderrLines[$stderrLineCount..($stderrLines.Count - 1)] | ForEach-Object { Write-Host $_ -ForegroundColor Red }
             }
