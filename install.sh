@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.2"
+RELEASE_VERSION="1.4.3"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
@@ -118,7 +118,11 @@ ensure_macos_prereqs() {
     fi
 
     if xcode-select -p >/dev/null 2>&1; then
-        return 0
+        if command -v git >/dev/null 2>&1; then
+            return 0
+        fi
+        echo "检测到 Xcode Command Line Tools 路径存在，但 git 仍不可用。请先完成 Command Line Tools 安装后重新执行。"
+        exit 11
     fi
 
     echo "检测到 macOS 尚未安装 Xcode Command Line Tools，正在尝试触发系统安装..."
@@ -137,9 +141,27 @@ invoke_official_installer() {
     local script_path="$1"
     shift
 
-    if [[ "$UNAME_S" == "Darwin" && -r /dev/tty && "$NO_PROMPT" -eq 0 ]]; then
-        bash "$script_path" "$@" < /dev/tty
-        return
+    if [[ "$UNAME_S" == "Darwin" && "$NO_PROMPT" -eq 0 ]]; then
+        if [[ -t 0 ]]; then
+            bash "$script_path" "$@"
+            return
+        fi
+
+        if command -v script >/dev/null 2>&1 && [[ -r /dev/tty ]]; then
+            script -q /dev/null bash "$script_path" "$@" < /dev/tty
+            return
+        fi
+
+        if [[ -r /dev/tty ]]; then
+            bash "$script_path" "$@" < /dev/tty
+            return
+        fi
+
+        echo "错误：当前 macOS 会话无法提供交互终端，官方安装器无法安全输入 sudo 密码。"
+        echo "请改用“先下载脚本，再本地执行”的方式重新安装："
+        echo "  curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh -o /tmp/openclaw-install.sh"
+        echo "  bash /tmp/openclaw-install.sh"
+        exit 12
     fi
 
     bash "$script_path" "$@"
