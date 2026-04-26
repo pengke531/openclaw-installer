@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.1"
+RELEASE_VERSION="1.4.2"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
@@ -122,13 +122,27 @@ ensure_macos_prereqs() {
     fi
 
     echo "检测到 macOS 尚未安装 Xcode Command Line Tools，正在尝试触发系统安装..."
-    echo "如果系统弹出安装窗口，请点击安装并等待完成，然后脚本会继续调用 OpenClaw 官方安装器。"
+    echo "如果系统弹出安装窗口，请点击安装并等待完成。安装完成后，请重新执行本脚本。"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "[DryRun] xcode-select --install"
         return 0
     fi
 
     xcode-select --install >/dev/null 2>&1 || true
+    echo "已触发 Xcode Command Line Tools 安装。请先完成安装，再重新执行 OpenClaw 一键安装命令。"
+    exit 10
+}
+
+invoke_official_installer() {
+    local script_path="$1"
+    shift
+
+    if [[ "$UNAME_S" == "Darwin" && -r /dev/tty && "$NO_PROMPT" -eq 0 ]]; then
+        bash "$script_path" "$@" < /dev/tty
+        return
+    fi
+
+    bash "$script_path" "$@"
 }
 
 run_or_echo() {
@@ -537,9 +551,9 @@ echo "即将执行：bash <official-installer> ${official_args[*]:-}"
 echo
 
 if [[ ${#official_args[@]} -gt 0 ]]; then
-    bash "$tmp_file" "${official_args[@]}"
+    invoke_official_installer "$tmp_file" "${official_args[@]}"
 else
-    bash "$tmp_file"
+    invoke_official_installer "$tmp_file"
 fi
 
 bootstrap_first_launch

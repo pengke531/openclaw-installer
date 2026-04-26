@@ -65,6 +65,12 @@ bash install.sh
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
 ```
 
+macOS 额外说明：
+
+- 如果系统首次弹出 `Xcode Command Line Tools` 安装窗口，请先完成安装。
+- 安装完成后，再重新执行一次安装命令。
+- 新版本脚本会把官方安装器的交互输入绑定回终端，避免 `stdin is not a TTY` 导致 Homebrew 无法输入密码。
+
 目前更推荐直接使用 `install.sh` 本体，而不是仓库入口 `install`。
 原因：GitHub CDN 缓存刷新可能有延迟，直连 `install.sh` 更稳定。
 
