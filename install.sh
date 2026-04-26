@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.3"
+RELEASE_VERSION="1.4.4"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
 DEFAULT_OPENCLAW_VERSION="latest"
+DEFAULT_SELF_INSTALL_URL="https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh"
+SELF_INSTALL_URL="${OPENCLAW_SELF_INSTALL_URL:-$DEFAULT_SELF_INSTALL_URL}"
 
 INSTALL_METHOD=""
 VERSION="$DEFAULT_OPENCLAW_VERSION"
@@ -18,6 +20,7 @@ DRY_RUN=0
 VERBOSE=0
 NO_PROMPT=0
 USE_BETA=0
+ORIGINAL_ARGS=("$@")
 
 print_usage() {
     cat <<'EOF'
@@ -147,11 +150,6 @@ invoke_official_installer() {
             return
         fi
 
-        if command -v script >/dev/null 2>&1 && [[ -r /dev/tty ]]; then
-            script -q /dev/null bash "$script_path" "$@" < /dev/tty
-            return
-        fi
-
         if [[ -r /dev/tty ]]; then
             bash "$script_path" "$@" < /dev/tty
             return
@@ -165,6 +163,36 @@ invoke_official_installer() {
     fi
 
     bash "$script_path" "$@"
+}
+
+reexec_macos_wrapper_if_needed() {
+    if [[ "$UNAME_S" != "Darwin" || "$NO_PROMPT" -eq 1 ]]; then
+        return 0
+    fi
+
+    if [[ "${OPENCLAW_MAC_REEXEC:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    if [[ -t 0 ]]; then
+        return 0
+    fi
+
+    if [[ ! -r /dev/tty ]]; then
+        echo "错误：当前 macOS 会话没有可用的交互终端，无法完成需要 sudo 密码的安装步骤。"
+        echo "请改用“先下载脚本，再本地执行”的方式重新安装："
+        echo "  curl -fsSL $SELF_INSTALL_URL -o /tmp/openclaw-install.sh"
+        echo "  bash /tmp/openclaw-install.sh"
+        exit 13
+    fi
+
+    local wrapper_file
+    wrapper_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-wrapper.XXXXXX.sh")"
+    echo "检测到当前是管道启动方式，macOS 将自动切换到本地临时脚本模式，以便继续交互安装..."
+    download_once "$SELF_INSTALL_URL" "$wrapper_file"
+    chmod +x "$wrapper_file"
+    export OPENCLAW_MAC_REEXEC=1
+    exec bash "$wrapper_file" "${ORIGINAL_ARGS[@]}" < /dev/tty
 }
 
 run_or_echo() {
@@ -519,6 +547,8 @@ if [[ -n "$INSTALL_METHOD" && "$INSTALL_METHOD" != "npm" && "$INSTALL_METHOD" !=
     echo "错误：--install-method 只支持 npm 或 git"
     exit 2
 fi
+
+reexec_macos_wrapper_if_needed
 
 print_banner
 
