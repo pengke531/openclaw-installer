@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.4"
+RELEASE_VERSION="1.4.5"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
@@ -20,7 +20,10 @@ DRY_RUN=0
 VERBOSE=0
 NO_PROMPT=0
 USE_BETA=0
-ORIGINAL_ARGS=("$@")
+ORIGINAL_ARGS=()
+if [[ $# -gt 0 ]]; then
+    ORIGINAL_ARGS=("$@")
+fi
 
 print_usage() {
     cat <<'EOF'
@@ -140,6 +143,40 @@ ensure_macos_prereqs() {
     exit 10
 }
 
+ensure_macos_user_npm() {
+    if [[ "$UNAME_S" != "Darwin" ]]; then
+        return 0
+    fi
+
+    if ! command -v npm >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local current_prefix=""
+    current_prefix="$(npm config get prefix 2>/dev/null || true)"
+    local preferred_prefix="$HOME/.npm-global"
+    local preferred_cache="$HOME/.npm-cache"
+
+    mkdir -p "$preferred_prefix/bin" "$preferred_cache"
+
+    export NPM_CONFIG_PREFIX="$preferred_prefix"
+    export npm_config_prefix="$preferred_prefix"
+    export NPM_CONFIG_CACHE="$preferred_cache"
+    export npm_config_cache="$preferred_cache"
+    export PATH="$preferred_prefix/bin:$PATH"
+
+    if [[ -n "$current_prefix" && "$current_prefix" != "$preferred_prefix" ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "[DryRun] npm prefix 将切换到用户目录：$preferred_prefix"
+            echo "[DryRun] npm cache 将切换到用户目录：$preferred_cache"
+            return 0
+        fi
+        npm config set prefix "$preferred_prefix" --location=user >/dev/null 2>&1 || true
+        npm config set cache "$preferred_cache" --location=user >/dev/null 2>&1 || true
+        echo "已为 macOS 切换到用户级 npm 目录：$preferred_prefix"
+    fi
+}
+
 invoke_official_installer() {
     local script_path="$1"
     shift
@@ -192,7 +229,11 @@ reexec_macos_wrapper_if_needed() {
     download_once "$SELF_INSTALL_URL" "$wrapper_file"
     chmod +x "$wrapper_file"
     export OPENCLAW_MAC_REEXEC=1
-    exec bash "$wrapper_file" "${ORIGINAL_ARGS[@]}" < /dev/tty
+    if [[ ${#ORIGINAL_ARGS[@]} -gt 0 ]]; then
+        exec bash "$wrapper_file" "${ORIGINAL_ARGS[@]}" < /dev/tty
+    else
+        exec bash "$wrapper_file" < /dev/tty
+    fi
 }
 
 run_or_echo() {
@@ -564,6 +605,7 @@ cleanup() {
 trap cleanup EXIT
 
 ensure_macos_prereqs
+ensure_macos_user_npm
 
 echo "正在下载 OpenClaw 官方安装器..."
 installer_candidates=()

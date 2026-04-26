@@ -1,4 +1,4 @@
-# OpenClaw Installer v1.4.1
+# OpenClaw Installer v1.4.5
 
 面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
@@ -70,6 +70,7 @@ macOS 额外说明：
 - 如果系统首次弹出 `Xcode Command Line Tools` 安装窗口，请先完成安装。
 - 安装完成后，再重新执行一次安装命令。
 - 新版本脚本会在 macOS 检测到 `curl | bash` 管道启动时，自动切换到本地临时脚本模式，尽量恢复正常交互终端。
+- 如果客户机器上已有旧版 Node.js / npm 且全局目录在 `/usr/local`，新版本会优先切换到用户级 npm 目录，避免 `EACCES: permission denied`。
 - 如果客户机器仍然对 `curl | bash` 的交互处理不稳定，改用下面这个更稳的两步命令：
 
 ```bash
