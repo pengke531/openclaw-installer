@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.5"
+RELEASE_VERSION="1.4.6"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
+MACOS_OFFICIAL_INSTALL_URL="https://openclaw.ai/install-cli.sh"
+if [[ "$UNAME_S" == "Darwin" ]]; then
+    DEFAULT_OFFICIAL_INSTALL_URL="$MACOS_OFFICIAL_INSTALL_URL"
+fi
 OFFICIAL_INSTALL_URL="${OPENCLAW_OFFICIAL_INSTALL_URL:-$DEFAULT_OFFICIAL_INSTALL_URL}"
 DEFAULT_OPENCLAW_VERSION="latest"
 DEFAULT_SELF_INSTALL_URL="https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh"
@@ -80,7 +84,7 @@ download_once() {
     local output="$2"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fL --proto '=https' --tlsv1.2 \
+        curl --http1.1 -fL --proto '=https' --tlsv1.2 \
             --connect-timeout 15 --max-time 600 \
             --retry 3 --retry-delay 2 --retry-all-errors \
             -o "$output" "$url"
@@ -116,6 +120,33 @@ build_official_installer_candidates() {
     local candidates=()
     candidates+=("$OFFICIAL_INSTALL_URL")
     printf '%s\n' "${candidates[@]}"
+}
+
+official_installer_is_cli() {
+    local url="${DOWNLOADED_FROM_URL:-$OFFICIAL_INSTALL_URL}"
+    [[ "$url" == *"/install-cli.sh"* ]]
+}
+
+harden_macos_downloaded_installer() {
+    local script_path="$1"
+    if [[ "$UNAME_S" != "Darwin" ]]; then
+        return 0
+    fi
+    if ! official_installer_is_cli; then
+        return 0
+    fi
+
+    local hardened_file
+    hardened_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-official-hardened.XXXXXX")"
+    sed \
+        -e 's/curl -fsSL/curl --http1.1 -fsSL/g' \
+        -e 's/curl -fL/curl --http1.1 -fL/g' \
+        "$script_path" > "$hardened_file"
+    mv "$hardened_file" "$script_path"
+}
+
+ensure_openclaw_runtime_path() {
+    export PATH="$HOME/.openclaw/bin:$HOME/.npm-global/bin:$PATH"
 }
 
 ensure_macos_prereqs() {
@@ -187,7 +218,7 @@ invoke_official_installer() {
             return
         fi
 
-        if [[ -r /dev/tty ]]; then
+        if { : < /dev/tty; } 2>/dev/null; then
             bash "$script_path" "$@" < /dev/tty
             return
         fi
@@ -211,11 +242,15 @@ reexec_macos_wrapper_if_needed() {
         return 0
     fi
 
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        return 0
+    fi
+
     if [[ -t 0 ]]; then
         return 0
     fi
 
-    if [[ ! -r /dev/tty ]]; then
+    if ! { : < /dev/tty; } 2>/dev/null; then
         echo "错误：当前 macOS 会话没有可用的交互终端，无法完成需要 sudo 密码的安装步骤。"
         echo "请改用“先下载脚本，再本地执行”的方式重新安装："
         echo "  curl -fsSL $SELF_INSTALL_URL -o /tmp/openclaw-install.sh"
@@ -224,7 +259,7 @@ reexec_macos_wrapper_if_needed() {
     fi
 
     local wrapper_file
-    wrapper_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-wrapper.XXXXXX.sh")"
+    wrapper_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-wrapper.XXXXXX")"
     echo "检测到当前是管道启动方式，macOS 将自动切换到本地临时脚本模式，以便继续交互安装..."
     download_once "$SELF_INSTALL_URL" "$wrapper_file"
     chmod +x "$wrapper_file"
@@ -482,7 +517,11 @@ bootstrap_first_launch() {
         echo "[DryRun] 检查 OpenClaw 配置健康状态；必要时备份旧配置并写入最小本地配置"
         echo "[DryRun] openclaw doctor --repair --generate-gateway-token --yes --non-interactive"
         echo "[DryRun] openclaw gateway install --force --token <generated-token>"
-        echo "[DryRun] openclaw dashboard"
+        if [[ "$NO_DASHBOARD" -eq 1 ]]; then
+            echo "[DryRun] 跳过控制台自动打开"
+        else
+            echo "[DryRun] openclaw dashboard"
+        fi
         return 0
     fi
 
@@ -593,12 +632,14 @@ reexec_macos_wrapper_if_needed
 
 print_banner
 
+ensure_openclaw_runtime_path
+
 if [[ "$UNINSTALL" -eq 1 ]]; then
     uninstall_openclaw
     exit 0
 fi
 
-tmp_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-official-install.XXXXXX.sh")"
+tmp_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-official-install.XXXXXX")"
 cleanup() {
     rm -f "$tmp_file"
 }
@@ -613,13 +654,18 @@ while IFS= read -r candidate; do
     [[ -n "$candidate" ]] && installer_candidates+=("$candidate")
 done < <(build_official_installer_candidates)
 download_to "$tmp_file" "${installer_candidates[@]}"
+harden_macos_downloaded_installer "$tmp_file"
 
 official_args=()
 if [[ -n "$INSTALL_METHOD" ]]; then
     official_args+=(--install-method "$INSTALL_METHOD")
 fi
 if [[ "$USE_BETA" -eq 1 ]]; then
-    official_args+=(--beta)
+    if official_installer_is_cli; then
+        official_args+=(--version next)
+    else
+        official_args+=(--beta)
+    fi
 fi
 if [[ -n "$VERSION" && "$VERSION" != "$DEFAULT_OPENCLAW_VERSION" ]]; then
     official_args+=(--version "$VERSION")
@@ -631,23 +677,34 @@ if [[ "$NO_ONBOARD" -eq 1 ]]; then
     official_args+=(--no-onboard)
 fi
 if [[ "$NO_PROMPT" -eq 1 ]]; then
-    official_args+=(--no-prompt)
+    if ! official_installer_is_cli; then
+        official_args+=(--no-prompt)
+    fi
 fi
 if [[ "$DRY_RUN" -eq 1 ]]; then
-    official_args+=(--dry-run)
+    if ! official_installer_is_cli; then
+        official_args+=(--dry-run)
+    fi
 fi
 if [[ "$VERBOSE" -eq 1 ]]; then
-    official_args+=(--verbose)
+    if ! official_installer_is_cli; then
+        official_args+=(--verbose)
+    fi
 fi
 
 echo "已切换到安装器路径：${DOWNLOADED_FROM_URL:-$OFFICIAL_INSTALL_URL}"
 echo "即将执行：bash <official-installer> ${official_args[*]:-}"
 echo
 
-if [[ ${#official_args[@]} -gt 0 ]]; then
-    invoke_official_installer "$tmp_file" "${official_args[@]}"
+if [[ "$DRY_RUN" -eq 1 && "$UNAME_S" == "Darwin" && official_installer_is_cli ]]; then
+    echo "[DryRun] macOS 将执行官方 CLI 安装器；该安装器不支持 --dry-run，已跳过真实安装。"
 else
-    invoke_official_installer "$tmp_file"
+    if [[ ${#official_args[@]} -gt 0 ]]; then
+        invoke_official_installer "$tmp_file" "${official_args[@]}"
+    else
+        invoke_official_installer "$tmp_file"
+    fi
 fi
 
+ensure_openclaw_runtime_path
 bootstrap_first_launch

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.6 - 2026-04-30
+
+- Restored the macOS default installer path to the official `install-cli.sh` flow, avoiding the Homebrew bootstrap used by the generic installer.
+- Added HTTP/1.1 hardening for macOS installer downloads to work around intermittent curl HTTP/2 framing failures.
+- Ensured the wrapper can immediately find `~/.openclaw/bin/openclaw` after the CLI installer finishes.
+
 ## v1.3.3 - 2026-04-12
 
 - Changed the installer default OpenClaw target from `2026.4.2` to `2026.4.11`.
