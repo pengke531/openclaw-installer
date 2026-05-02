@@ -17,11 +17,26 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-uninstall.ps1" -Uninstall -PurgeData
 ```
 
-## Linux / macOS / WSL 安装
+## Linux / WSL 安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
 ```
+
+## macOS 安装
+
+推荐直接发这条“两步带进度版”：
+
+```bash
+curl -fL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
+  https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh \
+  -o /tmp/openclaw-install.sh && bash /tmp/openclaw-install.sh
+```
+
+说明：
+
+- 如果按回车后一直没反应，通常是 GitHub Raw 下载阶段网络慢，不是脚本已经执行失败。
+- 两步命令能看见下载进度，更容易判断问题是在网络还是在安装过程。
 
 ## Linux / macOS / WSL 一键彻底卸载
 

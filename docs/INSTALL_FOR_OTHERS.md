@@ -28,13 +28,29 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
-### Linux / macOS / WSL
+### Linux / WSL
 
 让对方打开终端执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
 ```
+
+### macOS
+
+让对方打开终端执行这个“两步带进度版”：
+
+```bash
+curl -fL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
+  https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh \
+  -o /tmp/openclaw-install.sh && bash /tmp/openclaw-install.sh
+```
+
+这样做的原因是：
+
+- `curl -fsSL ... | bash` 在 GitHub Raw 下载阶段如果网络慢，会看起来像“按回车后没任何反应”。
+- 两步命令会显示下载进度，能明确区分是“下载没成功”还是“脚本执行失败”。
+- 对 macOS 来说，这种方式也更适合后续需要交互输入 sudo 密码的场景。
 
 ## 远程在线彻底卸载
 

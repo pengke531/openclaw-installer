@@ -51,7 +51,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
-### Linux / macOS / WSL
+### Linux / WSL
 
 本地运行：
 
@@ -65,12 +65,30 @@ bash install.sh
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
 ```
 
+### macOS
+
+本地运行：
+
+```bash
+bash install.sh
+```
+
+远程安装推荐使用“两步带进度版”：
+
+```bash
+curl -fL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
+  https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh \
+  -o /tmp/openclaw-install.sh && bash /tmp/openclaw-install.sh
+```
+
 macOS 额外说明：
 
 - 如果系统首次弹出 `Xcode Command Line Tools` 安装窗口，请先完成安装。
 - 安装完成后，再重新执行一次安装命令。
 - 新版本脚本会在 macOS 检测到 `curl | bash` 管道启动时，自动切换到本地临时脚本模式，尽量恢复正常交互终端。
 - 如果客户机器上已有旧版 Node.js / npm 且全局目录在 `/usr/local`，新版本会优先切换到用户级 npm 目录，避免 `EACCES: permission denied`。
+- 如果客户输入命令后长时间“没有任何响应”，通常是 GitHub Raw 下载阶段网络不通或非常慢，而不是脚本已经开始执行。
+- 上面的两步带进度命令比 `curl -fsSL ... | bash` 更容易判断到底是“下载卡住”还是“安装失败”。
 - 如果客户机器仍然对 `curl | bash` 的交互处理不稳定，改用下面这个更稳的两步命令：
 
 ```bash
