@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.6"
+RELEASE_VERSION="1.4.7"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
 MACOS_OFFICIAL_INSTALL_URL="https://openclaw.ai/install-cli.sh"
@@ -75,6 +75,20 @@ print_banner() {
 OpenClaw 一键安装工具 v${RELEASE_VERSION}
 开发者：创造晴天 / 微信：kerp531
 ============================================================
+
+EOF
+}
+
+print_macos_notice() {
+    if [[ "$UNAME_S" != "Darwin" ]]; then
+        return 0
+    fi
+
+    cat <<'EOF'
+macOS 安装提示：
+- 首次安装可能需要先完成 Xcode Command Line Tools。
+- 安装过程中如需 sudo 密码，请直接在终端输入。
+- 如果通过 curl 管道启动，脚本会自动切换到本地临时脚本模式继续执行。
 
 EOF
 }
@@ -158,7 +172,13 @@ ensure_macos_prereqs() {
         if command -v git >/dev/null 2>&1; then
             return 0
         fi
-        echo "检测到 Xcode Command Line Tools 路径存在，但 git 仍不可用。请先完成 Command Line Tools 安装后重新执行。"
+        echo "检测到 Xcode Command Line Tools 路径存在，但 git 仍不可用，正在再次触发系统安装提示..."
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "[DryRun] xcode-select --install"
+            return 0
+        fi
+        xcode-select --install >/dev/null 2>&1 || true
+        echo "请先完成 Command Line Tools 安装，再重新执行 OpenClaw 一键安装命令。"
         exit 11
     fi
 
@@ -261,6 +281,7 @@ reexec_macos_wrapper_if_needed() {
     local wrapper_file
     wrapper_file="$(mktemp "${TMPDIR:-/tmp}/openclaw-wrapper.XXXXXX")"
     echo "检测到当前是管道启动方式，macOS 将自动切换到本地临时脚本模式，以便继续交互安装..."
+    echo "正在重新下载本地临时安装脚本，这一步会显示下载进度。"
     download_once "$SELF_INSTALL_URL" "$wrapper_file"
     chmod +x "$wrapper_file"
     export OPENCLAW_MAC_REEXEC=1
@@ -631,6 +652,7 @@ fi
 reexec_macos_wrapper_if_needed
 
 print_banner
+print_macos_notice
 
 ensure_openclaw_runtime_path
 

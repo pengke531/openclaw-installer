@@ -13,6 +13,7 @@
 补充：
 - macOS 默认改走 `https://openclaw.ai/install-cli.sh`
 - 这样可以把 OpenClaw 与 Node 安装到 `~/.openclaw` 前缀下，更适合“一键发给别人安装”
+- macOS 对外分发时，推荐使用“先下载到本地临时文件，再执行”的两步命令，失败率比 `curl ... | bash` 更低
 
 ## 支持矩阵
 
@@ -32,10 +33,18 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/pengke531/openclaw-ins
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\openclaw-install.ps1"
 ```
 
-### Linux / macOS / WSL
+### Linux / WSL
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh | bash
+```
+
+### macOS
+
+```bash
+curl -fL --connect-timeout 15 --max-time 600 --retry 3 --retry-delay 2 \
+  https://raw.githubusercontent.com/pengke531/openclaw-installer/main/install.sh \
+  -o /tmp/openclaw-install.sh && bash /tmp/openclaw-install.sh
 ```
 
 ## 本地单文件安装
