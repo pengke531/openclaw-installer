@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELEASE_VERSION="1.4.7"
+RELEASE_VERSION="1.4.8"
 UNAME_S="$(uname -s)"
 DEFAULT_OFFICIAL_INSTALL_URL="https://openclaw.ai/install.sh"
 MACOS_OFFICIAL_INSTALL_URL="https://openclaw.ai/install-cli.sh"
@@ -226,6 +226,20 @@ ensure_macos_user_npm() {
         npm config set cache "$preferred_cache" --location=user >/dev/null 2>&1 || true
         echo "已为 macOS 切换到用户级 npm 目录：$preferred_prefix"
     fi
+}
+
+ensure_install_prereqs() {
+    echo "正在检查安装依赖..."
+
+    ensure_macos_prereqs
+    ensure_macos_user_npm
+
+    if [[ "$UNAME_S" == "Darwin" ]]; then
+        echo "macOS 依赖检查完成，开始安装 OpenClaw..."
+        return 0
+    fi
+
+    echo "依赖检查完成，开始安装 OpenClaw..."
 }
 
 invoke_official_installer() {
@@ -667,8 +681,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ensure_macos_prereqs
-ensure_macos_user_npm
+ensure_install_prereqs
 
 echo "正在下载 OpenClaw 官方安装器..."
 installer_candidates=()

@@ -28,13 +28,21 @@
 - 检查并修正 npm 全局前缀到用户目录
 - 检查并修正 npm 缓存目录到用户目录
 - 检查并修正 npm / OpenClaw 所在目录到用户 PATH
-- 默认直接调用 OpenClaw 官方 PowerShell 安装器
+- 先检查 Node.js、npm、npm 权限与 Git，再调用 OpenClaw 官方 PowerShell 安装器
 - 保留官方 `npm` / `git` 两种安装模式入口
 - 支持一键卸载 OpenClaw，并可选择彻底清理状态/工作区/配置
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开控制台
 - 遇到旧配置或插件残留导致 OpenClaw 4.8 读配置失败时，自动备份旧配置并切换到最小本地配置
 
 ## 安装
+
+脚本会先完成这条顺序：
+
+1. 检查 Node.js
+2. 检查 npm
+3. 修正 npm 全局前缀、缓存目录与 PATH
+4. 如需 git 模式则检查 Git
+5. 依赖都就绪后，再调用 OpenClaw 官方安装器
 
 ### 方法 1：本地直接运行仓库脚本
 

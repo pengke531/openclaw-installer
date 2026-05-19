@@ -26,6 +26,14 @@
 
 ## 在线安装
 
+当前包装层的核心顺序是：
+
+1. 先检查依赖
+2. 缺依赖时先安装或修复依赖
+3. 修正 npm 权限相关目录
+4. 依赖就绪后再调用 OpenClaw 官方安装器
+5. 安装完成后再执行 gateway / dashboard bootstrap
+
 ### Windows
 
 ```powershell

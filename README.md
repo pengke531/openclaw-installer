@@ -1,4 +1,4 @@
-# OpenClaw Installer v1.4.5
+# OpenClaw Installer v1.4.8
 
 面向“帮别人安装或卸载 OpenClaw”的稳定包装项目。
 
@@ -20,6 +20,7 @@
 - Windows 缺少 Node.js、npm、Git 时自动补环境
 - Windows 自动修正 npm 全局前缀与 PATH
 - Windows 自动修正 npm 缓存目录权限
+- 统一先检查依赖，再开始安装 OpenClaw
 - Bash / PowerShell 下载官方安装器时自动重试
 - Windows 卸载时优先调用官方 `openclaw uninstall`，CLI 不在时自动做手工清理兜底
 - 安装完成后自动生成 gateway token、安装 gateway 服务并打开 OpenClaw 控制台
@@ -157,6 +158,7 @@ bash install.sh --uninstall --purge-data
 
 默认安装完成后，脚本还会继续完成一轮首次启动 bootstrap：
 
+- 先检查并修复依赖链
 - 修正 npm 全局前缀、缓存目录与 PATH
 - 执行 `openclaw doctor --repair --generate-gateway-token --yes --non-interactive`
 - 安装并刷新 Gateway 服务

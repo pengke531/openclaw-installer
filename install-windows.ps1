@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$Script:ReleaseVersion = "1.4.2"
+$Script:ReleaseVersion = "1.4.8"
 $Script:DefaultOpenClawVersion = "latest"
 $OfficialInstallUrl = if ($env:OPENCLAW_OFFICIAL_INSTALL_PS1) { $env:OPENCLAW_OFFICIAL_INSTALL_PS1 } else { "https://openclaw.ai/install.ps1" }
 $Script:NodeInstallerUrl = if ($env:OPENCLAW_NODEJS_MSI_URL) { $env:OPENCLAW_NODEJS_MSI_URL } else { "https://nodejs.org/dist/latest-v22.x/node-v22-x64.msi" }
@@ -687,6 +687,31 @@ function Ensure-NpmCacheReady {
     if (-not $DryRun) {
         Write-Host "npm 缓存目录：$currentCache" -ForegroundColor Green
     }
+}
+
+function Get-EffectiveInstallMethod {
+    if ([string]::IsNullOrWhiteSpace($InstallMethod)) {
+        return "npm"
+    }
+    return $InstallMethod
+}
+
+function Ensure-InstallPrerequisites {
+    param(
+        [string]$Method
+    )
+
+    Write-Host "正在检查安装依赖..." -ForegroundColor Cyan
+    Ensure-NodeReady
+    Ensure-NpmReady
+    Ensure-NpmPrefixReady
+    Ensure-NpmCacheReady
+
+    if ($Method -eq "git") {
+        Ensure-GitReady
+    }
+
+    Write-Host "依赖检查完成，开始安装 OpenClaw..." -ForegroundColor Green
 }
 
 function Set-NpmUserConfigValue {
@@ -1361,6 +1386,9 @@ if ($Uninstall) {
     Uninstall-OpenClaw
     exit 0
 }
+
+$effectiveInstallMethod = Get-EffectiveInstallMethod
+Ensure-InstallPrerequisites -Method $effectiveInstallMethod
 
 $invokeArgs = @()
 if ($PSBoundParameters.ContainsKey("InstallMethod")) {
