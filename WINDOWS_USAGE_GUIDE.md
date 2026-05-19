@@ -1,6 +1,6 @@
 # OpenClaw Windows 使用说明
 
-开发者：创造晴天  
+开发者：AI创世纪  
 微信：kerp531
 
 ## 适合谁

@@ -28,7 +28,7 @@ function Show-Banner {
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host "  OpenClaw 一键安装工具 for Windows v$($Script:ReleaseVersion)" -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "  开发者：创造晴天" -ForegroundColor Yellow
+    Write-Host "  开发者：AI创世纪" -ForegroundColor Yellow
     Write-Host "  微信：kerp531" -ForegroundColor Yellow
     Write-Host ""
 }
@@ -37,7 +37,7 @@ function Show-Usage {
     $lines = @(
         "OpenClaw Windows 安装包装脚本 v$($Script:ReleaseVersion)",
         "",
-        "开发者：创造晴天",
+        "开发者：AI创世纪",
         "微信：kerp531",
         "",
         "用途:",
